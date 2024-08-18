@@ -7,7 +7,8 @@ title: Draft
 
 The below constants assume a max node degree of 100
 
-|--     Name     --|-- Value --|
+|     Name         | Value     |
+|------------------|-----------|
 | MAX_TREE_DEPTH   | 3         | 
 | MAX_ID_LIST      | 100       | 
 | MAX_CHILDREN     | 100       |
@@ -15,7 +16,9 @@ The below constants assume a max node degree of 100
 
 We assume all peer ids (interchangeably called node ids) are 256-bit strings represented as `Bytes32`
 
-`NODE_ID = Bytes32`
+```python
+NODE_ID = Bytes32
+```
 
 #### `Peer`
 
