@@ -3,6 +3,20 @@ title: Draft
 
 ---
 
+#### Constants and Aliases
+
+The below constants assume a max node degree of 100
+
+|--     Name     --|-- Value --|
+| MAX_TREE_DEPTH   | 3         | 
+| MAX_ID_LIST      | 100       | 
+| MAX_CHILDREN     | 100       |
+| MAX_PARENTS      | 100       |
+
+We assume all peer ids (interchangeably called node ids) are 256-bit strings represented as `Bytes32`
+
+`NODE_ID = Bytes32`
+
 #### `Peer`
 
 ```python
@@ -13,8 +27,8 @@ class Peer:
     status_active: bool # redundant variable to last_queried_slot but can be useful.
     last_queried_slot: Slot # tracks the last slot the peer was seens as active
     is_evicted: bool # helps to mark a peer for eviction so that a routine task can remove it
-    children: List[Peer, MAX_CHILDREN_PER_PEER]
-    parents: List[Peer, MAX_PARENTS_PER_PEER] # creates a doubly linked list
+    children: List[Peer, MAX_CHILDREN]
+    parents: List[Peer, MAX_PARENTS] # creates a doubly linked list
     score: int32
 ```
 
@@ -61,7 +75,7 @@ def create_empty_peer(id: NODE_ID) -> Peer:
 
 #### `add_children`
 
-TODO: Check the sacntity of this function. Combines logic of `bfs_build_tree` and `build_tree_iterative` from previous version of the draft
+TODO: Check the sacntity of this function.
 
 TODO: I'm not a pythonista and I have assumed that objects are always referred (as pointers) instead of copied. we should check this to either keep or remove the last if condition
 
