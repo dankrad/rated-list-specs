@@ -142,4 +142,21 @@ def compute_score(peer: Peer) -> float:
 ```
 
 #### `evict_nodes`
-TODO
+
+```python
+def evict_nodes(parent: Peer, threshold: float):
+    for child in parent.children:
+        if peer.score < threshold:
+            parent.children.remove(child)
+            child.parents.remove(parent)
+
+        evict_nodes(child, threshold)
+```
+
+#### `get_peers`
+
+This function is abstracted out to be defined by the underlying p2p network. However, it should be of the below signature
+
+```python
+def get_peers(id: NODE_ID) -> IdList
+```
