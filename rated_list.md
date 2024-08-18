@@ -62,6 +62,9 @@ def create_empty_peer(id: NODE_ID) -> Peer:
 #### `add_children`
 
 TODO: Check the sacntity of this function. Combines logic of `bfs_build_tree` and `build_tree_iterative` from previous version of the draft
+
+TODO: I'm not a pythonista and I have assumed that objects are always referred (as pointers) instead of copied. we should check this to either keep or remove the last if condition
+
 ```python
 def add_children(rated_list: RatedList, peer: Peer, id_list: IdList):
     
@@ -73,9 +76,10 @@ def add_children(rated_list: RatedList, peer: Peer, id_list: IdList):
 
         if id not in rated_list: 
             child_peer = create_empty_peer(id)
+            rated_list[id] = child_peer
         elif not rated_list[id].level <= peer.level:
             child_peer = rated_list[id]
-            if rated_list[id].level != peer.level + 1:\
+            if rated_list[id].level != peer.level + 1:
                 child_peer.parents = []
         else:
             continue
@@ -84,7 +88,7 @@ def add_children(rated_list: RatedList, peer: Peer, id_list: IdList):
         child_peer.parents.append(peer)
         
         if child_peer.last_queried_slot != CURRENT_SLOT:
-            success, res_list = send_heartbeat(id)
+            success, res_list = get_peers(id)
             
             if success and len(res_list) > 0:
                 child_peer.last_queried_slot = CURRENT_SLOT
@@ -96,6 +100,9 @@ def add_children(rated_list: RatedList, peer: Peer, id_list: IdList):
             else:
                 child_peer.last_queried_slot = CURRENT_SLOT
                 child_peer.status_active = False
+
+        if id not in rated_list:
+            rated_list[id] = child_peer
 
         peer.children.append(child_peer)
     return
