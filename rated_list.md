@@ -37,10 +37,6 @@ SampleId = uint64
 @dataclass
 class NodeRecord:
     node_id: NodeId
-    level: uint8
-    status_active: bool # redundant variable to last_queried_slot but can be useful.
-    last_queried_slot: Slot # tracks the last slot the node was seens as active
-    is_evicted: bool # helps to mark a node for eviction so that a routine task can remove it
     children: List[NodeRecord, MAX_CHILDREN]
     parents: List[NodeRecord, MAX_PARENTS] # creates a doubly linked list
 ```
@@ -48,8 +44,6 @@ class NodeRecord:
 ### ScoreKeeper
 
 Data type to keep the score for one DAS query (corresponding to one block)
-
-TODO: Currently this can only handle one query per node (per block). We should think how to score nodes that respond to some queries but not others.
 
 ```python
 class ScoreKeeper:
@@ -77,64 +71,11 @@ def create_empty_node_record(id: NodeId) -> NodeRecord:
     
     node_record = NodeRecord(
         node_id: NodeId,
-        level: 255,
-        status_active: False, 
-        last_queried_slot: 0, 
-        is_evicted: False, 
-        children: None, 
-        parents: None
+        children: [], 
+        parents: []
     )
 
     return node_record
-```
-
-#### `add_children`
-
-TODO: Check the sanity of this function.
-
-TODO: I'm not a pythonista and I have assumed that objects are always referred (as pointers) instead of copied. we should check this to either keep or remove the last if condition
-
-```python
-def add_children(rated_list: NodeList, node: NodeRecord, id_list: IdList):
-    
-    if node.level >= MAX_TREE_DEPTH:
-        return
-Bytes32
-    for id in id_list:
-        child_node: NodeRecord = None
-
-        if id not in rated_list: 
-            child_node = create_empty_node_record(id)
-            rated_list[id] = child_node
-        elif not rated_list[id].level <= node.level:
-            child_node = rated_list[id]
-            if rated_list[id].level != node.level + 1:
-                child_node.parents = []
-        else:
-            continue
-
-        child_node.level = node.level + 1
-        child_node.parents.append(node)
-        
-        if child_node.last_queried_slot != CURRENT_SLOT:
-            success, res_list = get_peers(id)
-            
-            if success and len(res_list) > 0:
-                child_node.last_queried_slot = CURRENT_SLOT
-                child_node.status_active = True
-
-                # makes the algorithm depth-first. advantage is we don't require hold information in memory
-                # but we do spend stack memory for it (recursion)
-                add_children(rated_list, child_node, res_list)
-            else:
-                child_node.last_queried_slot = CURRENT_SLOT
-                child_node.status_active = False
-
-        if id not in rated_list:
-            rated_list[id] = child_node
-
-        node.children.append(child_node)
-    return
 ```
 
 ### `compute_descendant_score`
@@ -159,27 +100,60 @@ def compute_node_score(rated_list_data: RatedListData,
     # Return the highest score of any such path
     # This might require refactoring the data structure for more efficient
     # computation
+
+    score = compute_descendant_score(rated_list_data, block_root, node_id)
+
+    cur_path_scores: Dict[NodeId, float] = {
+        parent: score for parent in rated_list_data.nodes[node_id].parents
+    }
+
+    best_score = 0.0
+
+    while cur_path_scores:
+        new_path_scores: Dict[NodeId, float] = {}
+        for node, score in cur_path_scores.items():
+            for parent in rated_list_data.nodes[node].parents:
+                if parent == rated_list_data.own_id:
+                    best_score = max(best_score, score)
+                else:
+                    par_score = compute_descendant_score(rated_list_data, block_root, parent)
+                    if parent not in new_path_scores or
+                        new_path_scores[parent] < par_score:
+                        new_path_scores[parent] = par_score
+
+        cur_path_scores = new_path_scores
+
+    return best_score
+```
+
+#### `on_get_peers_response`
+
+Function that is called whenever we get the peer list of a node.
+
+```python
+def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children: Sequence[NodeId]):
     
-```
+    for child_id in children:
+        child_node: NodeRecord = None
 
-#### `evict_nodes`
+        if child_id not in rated_list_data.nodes: 
+            child_node = create_empty_node_record(child_id)
+            rated_list_data.nodes[child_id] = child_node
 
-```python
-def evict_nodes(parent: NodeRecord, threshold: float):
-    for child in parent.children:
-        if child.score < threshold:
-            parent.children.remove(child)
-            child.parents.remove(parent)
+        child_node.parents.add(node)
+        
+        if child_id not in rated_list_data.nodes:
+            rated_list_data.nodes[child_id] = child_node
 
-        evict_nodes(child, threshold)
-```
+        rated_list_data.nodes[node].children.add(child_node)
 
-#### `get_peers`
-
-This function is abstracted out to be defined by the underlying p2p network. However, it should be of the below signature
-
-```python
-def get_peers(id: NodeId) -> IdList
+    for child_id in rated_list_data.nodes[node].children:
+        if child_id not in children:
+            # Node no longer has child peer, remove link
+            rated_list_data.nodes[node].children.remove(child_id)
+            rated_list_data.nodes[child_id].parents.remove(node)
+            if len(rated_list_data.nodes[child_id].parents) == 0:
+                rated_list_data.nodes.remove(child_id)
 ```
 
 ### `on_request_score_update`
@@ -195,7 +169,11 @@ def on_request_score_update(rated_list_data: RatedListData,
     score_keeper = rated_list_data.scores[block_root]
     cur_ancestors = set(node_record.parents)
     while cur_ancestors:
-        new_ancestors = set()
+        new_ancestors = set                par_score = compute_descendant_score(rated_list_data, block_root, parent)
+                if parent not in new_path_scores or
+                    new_path_scores[parent] < par_score:
+                    new_path_scores[parent] = par_score
+()
         for ancestor in cur_ancestors:
             score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
             new_ancestors.update(ancestor.parents)
