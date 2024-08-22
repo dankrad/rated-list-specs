@@ -140,11 +140,7 @@ def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children
             child_node = create_empty_node_record(child_id)
             rated_list_data.nodes[child_id] = child_node
 
-        child_node.parents.add(node)
-        
-        if child_id not in rated_list_data.nodes:
-            rated_list_data.nodes[child_id] = child_node
-
+        rated_list_data.nodes[child_id].parents.add(node)
         rated_list_data.nodes[node].children.add(child_node)
 
     for child_id in rated_list_data.nodes[node].children:
@@ -169,11 +165,7 @@ def on_request_score_update(rated_list_data: RatedListData,
     score_keeper = rated_list_data.scores[block_root]
     cur_ancestors = set(node_record.parents)
     while cur_ancestors:
-        new_ancestors = set                par_score = compute_descendant_score(rated_list_data, block_root, parent)
-                if parent not in new_path_scores or
-                    new_path_scores[parent] < par_score:
-                    new_path_scores[parent] = par_score
-()
+        new_ancestors = set()
         for ancestor in cur_ancestors:
             score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
             new_ancestors.update(ancestor.parents)
