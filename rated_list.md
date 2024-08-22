@@ -3,7 +3,9 @@ title: Draft
 
 ---
 
-#### Constants and Aliases
+# Rated List specificetions
+
+## Constants
 
 The below constants assume a max node degree of 100
 
@@ -14,149 +16,186 @@ The below constants assume a max node degree of 100
 | MAX_CHILDREN     | 100       |
 | MAX_PARENTS      | 100       |
 
+
+## Custom types
+
 We assume all peer ids (interchangeably called node ids) are 256-bit strings represented as `Bytes32`
 
 ```python
-NODE_ID = Bytes32
+NodeId = Bytes32
 ```
 
-#### `Peer`
+We will represent SampleIds as integers, although they could potentially be represented as pairs in the future
+
+```python
+SampleId = uint64
+```
+
+### `NodeRecord`
 
 ```python
 @dataclass
-class Peer:
-    peer_id: NODE_ID
-    level: uint8
-    status_active: bool # redundant variable to last_queried_slot but can be useful.
-    last_queried_slot: Slot # tracks the last slot the peer was seens as active
-    is_evicted: bool # helps to mark a peer for eviction so that a routine task can remove it
-    children: List[Peer, MAX_CHILDREN]
-    parents: List[Peer, MAX_PARENTS] # creates a doubly linked list
-    score: int32
+class NodeRecord:
+    node_id: NodeId
+    children: List[NodeRecord, MAX_CHILDREN]
+    parents: List[NodeRecord, MAX_PARENTS] # creates a doubly linked list
 ```
 
-#### `RatedList`
+### ScoreKeeper
+
+Data type to keep the score for one DAS query (corresponding to one block)
 
 ```python
-RatedList = Dict[NODE_ID, Peer] # A flat routing table makes it easier to manage queries
+class ScoreKeeper:
+    descendants_contacted: Dict[NodeId, Set[Tuple[NodeId, SampleId]]]
+    descendants_replied: Dict[NodeId, Set[Tuple[NodeId, SampleId]]]
 ```
 
-#### `Node`
+
+### RatedListData
+
+Data type to keep all information required to maintain a rated list instance
 
 ```python
-@dataclass
-class Node:
-    rated_list: RatedList
-    tree_root: Peer
+class RatedListData:
+    nodes: Dict[NodeId, NodeRecord]
+    scores: Dict[Bytes32, ScoreKeeper]
 ```
 
-#### `IdList`
+
+#### `create_empty_node_record`
 
 ```python
-IdList = List[NODE_ID, MAX_ID_LIST]
-```
-
-#### `create_empty_peer`
-
-```python
-def create_empty_peer(id: NODE_ID) -> Peer:
+def create_empty_node_record(id: NodeId) -> NodeRecord:
     """ TODO: Add a description here """
     
-    peer = Peer(
-        peer_id: id,
-        level: 255,
-        status_active: False, 
-        last_queried_slot: 0, 
-        is_evicted: False, 
-        children: None, 
-        parents: None, 
-        score: float
+    node_record = NodeRecord(
+        node_id: NodeId,
+        children: [], 
+        parents: []
     )
 
-    return peer_list
+    return node_record
 ```
 
-#### `add_children`
-
-TODO: Check the sacntity of this function.
-
-TODO: I'm not a pythonista and I have assumed that objects are always referred (as pointers) instead of copied. we should check this to either keep or remove the last if condition
+### `compute_descendant_score`
 
 ```python
-def add_children(rated_list: RatedList, peer: Peer, id_list: IdList):
+def compute_descendant_score(rated_list_data: RatedListData,
+                             block_root: Root,
+                             node_id: NodeId) -> float:
+   score_keeper = rated_list_data.scores[block_root]
+   return score_keeper.descendants_contacted[node_id] /
+          score_keeper.descendants_replied[node_id]
+```
+
+#### `compute_node_score`
+
+```python
+def compute_node_score(rated_list_data: RatedListData,
+                       block_root: Root,
+                       node_id: NodeId) -> float:
+    # TODO:
+    # For each path in which the node appears from the root of the tree, the "pathScore" is the `descendant_score` of the lowest node in the path
+    # Return the highest score of any such path
+    # This might require refactoring the data structure for more efficient
+    # computation
+
+    score = compute_descendant_score(rated_list_data, block_root, node_id)
+
+    cur_path_scores: Dict[NodeId, float] = {
+        parent: score for parent in rated_list_data.nodes[node_id].parents
+    }
+
+    best_score = 0.0
+
+    while cur_path_scores:
+        new_path_scores: Dict[NodeId, float] = {}
+        for node, score in cur_path_scores.items():
+            for parent in rated_list_data.nodes[node].parents:
+                if parent == rated_list_data.own_id:
+                    best_score = max(best_score, score)
+                else:
+                    par_score = compute_descendant_score(rated_list_data, block_root, parent)
+                    if parent not in new_path_scores or
+                        new_path_scores[parent] < par_score:
+                        new_path_scores[parent] = par_score
+
+        cur_path_scores = new_path_scores
+
+    return best_score
+```
+
+#### `on_get_peers_response`
+
+Function that is called whenever we get the peer list of a node.
+
+```python
+def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children: Sequence[NodeId]):
     
-    if peer.level >= MAX_TREE_DEPTH:
-        return
+    for child_id in children:
+        child_node: NodeRecord = None
 
-    for id in id_list:
-        child_peer: Peer = None
+        if child_id not in rated_list_data.nodes: 
+            child_node = create_empty_node_record(child_id)
+            rated_list_data.nodes[child_id] = child_node
 
-        if id not in rated_list: 
-            child_peer = create_empty_peer(id)
-            rated_list[id] = child_peer
-        elif not rated_list[id].level <= peer.level:
-            child_peer = rated_list[id]
-            if rated_list[id].level != peer.level + 1:
-                child_peer.parents = []
-        else:
-            continue
-
-        child_peer.level = peer.level + 1
-        child_peer.parents.append(peer)
+        child_node.parents.add(node)
         
-        if child_peer.last_queried_slot != CURRENT_SLOT:
-            success, res_list = get_peers(id)
-            
-            if success and len(res_list) > 0:
-                child_peer.last_queried_slot = CURRENT_SLOT
-                child_peer.status_active = True
+        if child_id not in rated_list_data.nodes:
+            rated_list_data.nodes[child_id] = child_node
 
-                # makes the algorithm depth-first. advantage is we don't require hold information in memory
-                # but we do spend stack memory for it (recursion)
-                add_children(rated_list, child_peer, res_list)
-            else:
-                child_peer.last_queried_slot = CURRENT_SLOT
-                child_peer.status_active = False
+        rated_list_data.nodes[node].children.add(child_node)
 
-        if id not in rated_list:
-            rated_list[id] = child_peer
-
-        peer.children.append(child_peer)
-    return
+    for child_id in rated_list_data.nodes[node].children:
+        if child_id not in children:
+            # Node no longer has child peer, remove link
+            rated_list_data.nodes[node].children.remove(child_id)
+            rated_list_data.nodes[child_id].parents.remove(node)
+            if len(rated_list_data.nodes[child_id].parents) == 0:
+                rated_list_data.nodes.remove(child_id)
 ```
 
-#### `compute_score`
+### `on_request_score_update`
+
+This function should be called whenever a node sends a request for a data sample to another node found using rated list
 
 ```python
-def compute_score(peer: Peer) -> float:
-    # Interact with the block to determine its status
-    # self.block.interact()
-    if peer.children:  # If the node has children, compute the average score
-        total_score = sum(compute_score(child) for child in peer.children)
-        peer.score = total_score / len(peer.children)
-    else:
-        # score = self.block.get_status()  # Leaf node uses its own block's status
-        peer.score = 1.0 if peer.status_active else 0.0
-    
-    return peer.score
+def on_request_score_update(rated_list_data: RatedListData,
+                            block_root: Root,
+                            node_id: NodeId,
+                            sample_id: SampleId):
+    node_record = rated_list_data.nodes[nodes_id]
+    score_keeper = rated_list_data.scores[block_root]
+    cur_ancestors = set(node_record.parents)
+    while cur_ancestors:
+        new_ancestors = set                par_score = compute_descendant_score(rated_list_data, block_root, parent)
+                if parent not in new_path_scores or
+                    new_path_scores[parent] < par_score:
+                    new_path_scores[parent] = par_score
+()
+        for ancestor in cur_ancestors:
+            score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
+            new_ancestors.update(ancestor.parents)
+        cur_ancestors = new_ancestors
 ```
 
-#### `evict_nodes`
+### `on_response_score_update`
+
+This function should be called whenever a node receives a response to a request for a data sample from a node.
 
 ```python
-def evict_nodes(parent: Peer, threshold: float):
-    for child in parent.children:
-        if peer.score < threshold:
-            parent.children.remove(child)
-            child.parents.remove(parent)
-
-        evict_nodes(child, threshold)
-```
-
-#### `get_peers`
-
-This function is abstracted out to be defined by the underlying p2p network. However, it should be of the below signature
-
-```python
-def get_peers(id: NODE_ID) -> IdList
+def on_response_score_update(rated_list_data: RatedListData,
+                             block_root: Root,
+                             node_id: NodeId,
+                             sample_id: SampleId):
+    node_record = rated_list_data.nodes[nodes_id]
+    score_keeper = rated_list_data.scores[block_root]
+    cur_ancestors = set(node_record.parents)
+    while cur_ancestors:
+        new_ancestors = set()
+        for ancestor in cur_ancestors:
+            score_keeper.descendants_replied[ancestor].append((node_id, sample_id))
+            new_ancestors.update(ancestor.parents)
+        cur_ancestors = new_ancestors
 ```
