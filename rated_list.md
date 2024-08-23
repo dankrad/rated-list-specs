@@ -58,10 +58,10 @@ Data type to keep all information required to maintain a rated list instance
 
 ```python
 class RatedListData:
+    sample_mapping: Dict[SampleId, Set[NodeId]]
     nodes: Dict[NodeId, NodeRecord]
     scores: Dict[Bytes32, ScoreKeeper]
 ```
-
 
 #### `create_empty_node_record`
 
@@ -190,4 +190,29 @@ def on_response_score_update(rated_list_data: RatedListData,
             score_keeper.descendants_replied[ancestor].append((node_id, sample_id))
             new_ancestors.update(ancestor.parents)
         cur_ancestors = new_ancestors
+```
+
+### `add_samples_on_entry`
+
+```python
+def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId):
+    sample_ids = get_custody_columns(node_id)
+    for id in sample_ids:
+        if not rated_list_data.sample_mapping[id]:
+            rated_list_data.sample_mapping[id] = set()
+    
+        rated_list_data.sample_mapping[id].update(node_id)
+```
+
+### `remove_samples_on_exit`
+
+```python
+def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
+    sample_ids = get_custody_columns(node_id)
+    
+    for id in sample_ids:
+        if not rated_list_data.sample_mapping[id]:
+            continue
+
+        rated_list_data.sample_mapping[id].remove(node_id)
 ```
