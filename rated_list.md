@@ -131,7 +131,7 @@ def compute_node_score(rated_list_data: RatedListData,
 Function that is called whenever we get the peer list of a node.
 
 ```python
-def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children: Sequence[NodeId]):
+def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children: List[NodeId]):
     
     for child_id in children:
         child_node: NodeRecord = None
@@ -220,22 +220,22 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 ### `filter_nodes`
 
 ```python
-def filter_nodes(rated_list_data: RatedListData, desired_num_nodes: uint64):
-    scores = dict()
+def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32) -> List[NodeId]:
+    scores = []
     filtered_out_nodes = set()
 
     for node in rated_list_data.nodes:
-        score = compute_node_score(node.node_id)
-        scores[node.node_id] = score
+        score = compute_node_score(rated_list_data, block_root, node.node_id)
+        scores.append((node.node_id, score))
         if score > 0.9:
-            filtered_out_nodes.update(node)
+            filtered_out_nodes.update(node_id)
 
     # TODO:  if the average lies in the extreme end of the score range then the filtering is not efficient. Use the score distribution to filter out nodes instead 
-    if len(filtered_out_node) < desired_num_nodes:        
-        average_score = average([score for _, score in scores.items()])
+    if len(filtered_out_node) == 0:        
+        average_score = sum([score for _, score in scores])/ len(scores)
         for node_id, score in scores.items():
             if score > average_score - 0.1:
-                filtered_out_nodes.update(rated_list_data.nodes[node_id])
+                filtered_out_nodes.update(node_id)
             
     return filtered_out_nodes
 ```
