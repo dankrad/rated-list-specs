@@ -222,20 +222,24 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 ```python
 def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32) -> List[NodeId]:
     scores = []
-    filtered_out_nodes = set()
+    filter_score = 0.9
+    filtered_nodes = set()
+    evicted_nodes = set()
 
-    for node in rated_list_data.nodes:
-        score = compute_node_score(rated_list_data, block_root, node.node_id)
-        scores.append((node.node_id, score))
-        if score > 0.9:
-            filtered_out_nodes.update(node_id)
+    while len(filtered_nodes) == 0:
+        for node in rated_list_data.nodes:
+            score = compute_node_score(rated_list_data, block_root, node.node_id)
+            scores.append((node.node_id, score))
 
-    # TODO:  if the average lies in the extreme end of the score range then the filtering is not efficient. Use the score distribution to filter out nodes instead 
-    if len(filtered_out_node) == 0:        
-        average_score = sum([score for _, score in scores])/ len(scores)
-        for node_id, score in scores.items():
-            if score > average_score - 0.1:
-                filtered_out_nodes.update(node_id)
+            if score >= filter_score and node not in evicted_nodes:
+                filtered_nodes.update(node_id)
+            elif score < filter_score:
+                evicted_nodes.update(node)
+                evicted_nodes.update(node.children)
+        
+        # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
+        filter_score = sum([score for _, score in scores])/ len(scores) - 0.1
+
             
     return filtered_out_nodes
 ```
