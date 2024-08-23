@@ -216,3 +216,26 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 
         rated_list_data.sample_mapping[id].remove(node_id)
 ```
+
+### `filter_nodes`
+
+```python
+def filter_nodes(rated_list_data: RatedListData, desired_num_nodes: uint64):
+    scores = dict()
+    filtered_out_nodes = set()
+
+    for node in rated_list_data.nodes:
+        score = compute_node_score(node.node_id)
+        scores[node.node_id] = score
+        if score > 0.9:
+            filtered_out_nodes.update(node)
+
+    # TODO:  if the average lies in the extreme end of the score range then the filtering is not efficient. Use the score distribution to filter out nodes instead 
+    if len(filtered_out_node) < desired_num_nodes:        
+        average_score = average([score for _, score in scores.items()])
+        for node_id, score in scores.items():
+            if score > average_score - 0.1:
+                filtered_out_nodes.update(rated_list_data.nodes[node_id])
+            
+    return filtered_out_nodes
+```
