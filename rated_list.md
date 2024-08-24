@@ -85,8 +85,8 @@ def compute_descendant_score(rated_list_data: RatedListData,
                              block_root: Root,
                              node_id: NodeId) -> float:
    score_keeper = rated_list_data.scores[block_root]
-   return len(score_keeper.descendants_contacted[node_id]) /
-          len(score_keeper.descendants_replied[node_id])
+   return len(score_keeper.descendants_replied[node_id]) /
+          len(score_keeper.descendants_contacted[node_id]) if len(score_keeper.descendants_contacted[node_id]) > 0 else 0
 ```
 
 #### `compute_node_score`
