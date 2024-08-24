@@ -220,26 +220,26 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 ### `filter_nodes`
 
 ```python
-def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32) -> List[NodeId]:
+def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> List[NodeId]:
     scores = []
     filter_score = 0.9
     filtered_nodes = set()
     evicted_nodes = set()
 
     while len(filtered_nodes) == 0:
-        for node in rated_list_data.nodes:
-            score = compute_node_score(rated_list_data, block_root, node.node_id)
-            scores.append((node.node_id, score))
+        for node_id in rated_list_data.sample_mapping[sample_id]:
+            score = compute_node_score(rated_list_data, block_root, node_id)
+            scores.append((node_id, score))
 
             if score >= filter_score and node not in evicted_nodes:
                 filtered_nodes.update(node_id)
             elif score < filter_score:
-                evicted_nodes.update(node)
-                evicted_nodes.update(node.children)
+                evicted_nodes.update(rated_list_data.nodes[node_id])
+                evicted_nodes.update(rated_list_data.nodes[node_id].children)
         
         # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
         filter_score = sum([score for _, score in scores])/ len(scores) - 0.1
 
             
-    return filtered_out_nodes
+    return filtered_nodes
 ```
