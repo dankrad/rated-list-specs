@@ -46,9 +46,8 @@ class Node:
 
     def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
         score_keeper = self.dht.scores[block_root]
-        return len(score_keeper.descendants_contacted[node_id]) / len(
-            score_keeper.descendants_replied[node_id]
-        )
+        return len(score_keeper.descendants_contacted[node_id]) / 
+            len(score_keeper.descendants_replied[node_id])
 
     def on_get_peers_response(self, node_id: NodeId, peers: List[NodeId]):
         for peer_id in peers:
@@ -89,12 +88,74 @@ class Node:
                         best_score = max(best_score, score)
                     else:
                         par_score = self.compute_descendant_score(block_root, parent)
-                        if (
-                            parent not in new_path_scores
-                            or new_path_scores[parent] < par_score
-                        ):
+                        if parent not in new_path_scores or new_path_scores[parent] < par_score:
                             new_path_scores[parent] = par_score
 
             cur_path_scores = new_path_scores
 
         return best_score
+
+    def on_request_score_update(self, block_root: Root, node_id: NodeId, sample_id: SampleId):
+        node_record = self.dht.nodes[nodes_id]
+        score_keeper = self.dht.scores[block_root]
+
+        cur_ancestors = set(node_record.parents)
+
+        while cur_ancestors:
+            new_ancestors = set()
+            for ancestor in cur_ancestors:
+                score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
+                new_ancestors.update(ancestor.parents)
+            cur_ancestors = new_ancestors
+
+    def on_response_score_update(self, block_root: Root, node_id: NodeId, sample_id: SampleId):
+        node_record = self.dht.nodes[nodes_id]
+        score_keeper = self.dht.scores[block_root]
+
+        cur_ancestors = set(node_record.parents)
+
+        while cur_ancestors:
+            new_ancestors = set()
+            for ancestor in cur_ancestors:
+                score_keeper.descendants_replied[ancestor].append((node_id, sample_id))
+                new_ancestors.update(ancestor.parents)
+            cur_ancestors = new_ancestors
+
+    def add_samples_on_entry(self, node_id: NodeId):
+        sample_ids = get_custody_columns(node_id)
+        for id in sample_ids:
+            if not self.dht.sample_mapping[id]:
+                self.dht.sample_mapping[id] = set()
+
+            self.dht.sample_mapping[id].update(node_id)
+
+    def remove_samples_on_exit(self, node_id: NodeId):
+        sample_ids = get_custody_columns(node_id)
+
+        for id in sample_ids:
+            if not self.dht.sample_mapping[id]:
+                continue
+
+            self.dht.sample_mapping[id].remove(node_id)
+
+    def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> List[NodeId]:
+        scores = []
+        filter_score = 0.9
+        filtered_nodes = set()
+        evicted_nodes = set()
+
+        while len(filtered_nodes) == 0:
+            for node_id in self.dht.sample_mapping[sample_id]:
+                score = self.compute_node_score(block_root, node_id)
+                scores.append((node_id, score))
+
+                if score >= filter_score and node not in evicted_nodes:
+                    filtered_nodes.update(node_id)
+                elif score < filter_score:
+                    evicted_nodes.update(self.dht.nodes[node_id])
+                    evicted_nodes.update(self.dht.nodes[node_id].children)
+
+            # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
+            filter_score = sum([score for _, score in scores]) / len(scores) - 0.1
+
+        return filtered_nodes
