@@ -1,10 +1,8 @@
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Sequence
 from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64
 from dataclasses import dataclass
-
-type NodeId = Bytes32
-type SampleId = uint64
-type Root = Bytes32
+from utils import NodeId, SampleId, Root
+from dascore import get_custody_columns
 
 
 class NodeRecord:
@@ -46,10 +44,11 @@ class Node:
 
     def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
         score_keeper = self.dht.scores[block_root]
-        return len(score_keeper.descendants_contacted[node_id]) / 
-            len(score_keeper.descendants_replied[node_id])
+        return len(score_keeper.descendants_contacted[node_id]) / len(
+            score_keeper.descendants_replied[node_id]
+        )
 
-    def on_get_peers_response(self, node_id: NodeId, peers: List[NodeId]):
+    def on_get_peers_response(self, node_id: NodeId, peers: Sequence[NodeId]):
         for peer_id in peers:
             child_node: NodeRecord = None
 
@@ -88,14 +87,19 @@ class Node:
                         best_score = max(best_score, score)
                     else:
                         par_score = self.compute_descendant_score(block_root, parent)
-                        if parent not in new_path_scores or new_path_scores[parent] < par_score:
+                        if (
+                            parent not in new_path_scores
+                            or new_path_scores[parent] < par_score
+                        ):
                             new_path_scores[parent] = par_score
 
             cur_path_scores = new_path_scores
 
         return best_score
 
-    def on_request_score_update(self, block_root: Root, node_id: NodeId, sample_id: SampleId):
+    def on_request_score_update(
+        self, block_root: Root, node_id: NodeId, sample_id: SampleId
+    ):
         node_record = self.dht.nodes[nodes_id]
         score_keeper = self.dht.scores[block_root]
 
@@ -104,11 +108,15 @@ class Node:
         while cur_ancestors:
             new_ancestors = set()
             for ancestor in cur_ancestors:
-                score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
+                score_keeper.descendants_contacted[ancestor].append(
+                    (node_id, sample_id)
+                )
                 new_ancestors.update(ancestor.parents)
             cur_ancestors = new_ancestors
 
-    def on_response_score_update(self, block_root: Root, node_id: NodeId, sample_id: SampleId):
+    def on_response_score_update(
+        self, block_root: Root, node_id: NodeId, sample_id: SampleId
+    ):
         node_record = self.dht.nodes[nodes_id]
         score_keeper = self.dht.scores[block_root]
 
@@ -122,7 +130,9 @@ class Node:
             cur_ancestors = new_ancestors
 
     def add_samples_on_entry(self, node_id: NodeId):
+        # TODO: support a variable custody count for nodes
         sample_ids = get_custody_columns(node_id)
+
         for id in sample_ids:
             if not self.dht.sample_mapping[id]:
                 self.dht.sample_mapping[id] = set()
@@ -130,6 +140,7 @@ class Node:
             self.dht.sample_mapping[id].update(node_id)
 
     def remove_samples_on_exit(self, node_id: NodeId):
+        # TODO: support a variable custody count for nodes
         sample_ids = get_custody_columns(node_id)
 
         for id in sample_ids:
