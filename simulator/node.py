@@ -4,13 +4,11 @@ from dataclasses import dataclass
 from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
 
-
+@dataclass
 class NodeRecord:
-    def __init__(self, node_id, children, parents):
-        self.node_id: NodeId = node_id
-        self.children: List[NodeRecord] = children
-        self.parents: List[NodeRecord] = parents
-
+        node_id: NodeId
+        children: List[NodeId]
+        parents: List[NodeId]
 
 @dataclass
 class ScoreKeeper:
@@ -44,8 +42,11 @@ class Node:
 
     def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
         score_keeper = self.dht.scores[block_root]
-        return len(score_keeper.descendants_contacted[node_id]) / len(
-            score_keeper.descendants_replied[node_id]
+        return (
+            len(score_keeper.descendants_replied[node_id])
+            / len(score_keeper.descendants_contacted[node_id])
+            if len(score_keeper.descendants_contacted[node_id]) > 0
+            else 0
         )
 
     def on_get_peers_response(self, node_id: NodeId, peers: Sequence[NodeId]):
@@ -57,16 +58,16 @@ class Node:
                 self.dht.nodes[peer_id] = child_node
 
             self.dht.nodes[peer_id].parents.append(node_id)
-            self.dht.nodes[node_id].children.append(child_node)
+            self.dht.nodes[node_id].children.append(peer_id)
 
-        for child in self.dht.nodes[node_id].children:
-            if child.node_id not in peers:
+        for child_id in self.dht.nodes[node_id].children:
+            if child_id not in peers:
                 # Node no longer has child peer, remove link
-                self.dht.nodes[node_id].children.remove(child)
-                self.dht.nodes[child.node_id].parents.remove(self.dht.nodes[node_id])
+                self.dht.nodes[node_id].children.remove(child_id)
+                self.dht.nodes[child_id].parents.remove(node_id)
 
                 if len(child.parents) == 0:
-                    del self.dht.nodes[child.node_id]
+                    del self.dht.nodes[child_id]
 
     def compute_node_score(self, block_root: Root, node_id: NodeId) -> float:
         score = self.compute_descendant_score(block_root, node_id)
@@ -108,9 +109,7 @@ class Node:
         while cur_ancestors:
             new_ancestors = set()
             for ancestor in cur_ancestors:
-                score_keeper.descendants_contacted[ancestor].append(
-                    (node_id, sample_id)
-                )
+                score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
                 new_ancestors.update(ancestor.parents)
             cur_ancestors = new_ancestors
 
@@ -160,7 +159,7 @@ class Node:
                 score = self.compute_node_score(block_root, node_id)
                 scores.append((node_id, score))
 
-                if score >= filter_score and node not in evicted_nodes:
+                if score >= filter_score and node_id not in evicted_nodes:
                     filtered_nodes.update(node_id)
                 elif score < filter_score:
                     evicted_nodes.update(self.dht.nodes[node_id])
