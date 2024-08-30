@@ -37,8 +37,8 @@ SampleId = uint64
 @dataclass
 class NodeRecord:
     node_id: NodeId
-    children: List[NodeRecord, MAX_CHILDREN]
-    parents: List[NodeRecord, MAX_PARENTS] # creates a doubly linked list
+    children: List[NodeId, MAX_CHILDREN]
+    parents: List[NodeId, MAX_PARENTS] # creates a doubly linked list
 ```
 
 ### ScoreKeeper
@@ -131,23 +131,23 @@ def compute_node_score(rated_list_data: RatedListData,
 Function that is called whenever we get the peer list of a node.
 
 ```python
-def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children: List[NodeId]):
+def on_get_peers_response(rated_list_data: RatedListData, child_id: NodeId, peers: Sequence[NodeId]):
     
-    for child_id in children:
+    for peer_id in peers:
         child_node: NodeRecord = None
 
-        if child_id not in rated_list_data.nodes: 
-            child_node = create_empty_node_record(child_id)
-            rated_list_data.nodes[child_id] = child_node
+        if peer_id not in rated_list_data.nodes: 
+            child_node = NodeRecord(peer_id, [], [])
+            rated_list_data.nodes[peer_id] = child_node
 
-        rated_list_data.nodes[child_id].parents.add(node)
-        rated_list_data.nodes[node].children.add(child_node)
+        rated_list_data.nodes[peer_id].parents.append(node_id)
+        rated_list_data.nodes[node_id].children.append(peer_id)
 
-    for child_id in rated_list_data.nodes[node].children:
+    for child_id in rated_list_data.nodes[node_id].children:
         if child_id not in children:
             # Node no longer has child peer, remove link
             rated_list_data.nodes[node].children.remove(child_id)
-            rated_list_data.nodes[child_id].parents.remove(node)
+            rated_list_data.nodes[child_id].parents.remove(node_id)
             if len(rated_list_data.nodes[child_id].parents) == 0:
                 rated_list_data.nodes.remove(child_id)
 ```
