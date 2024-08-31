@@ -131,7 +131,7 @@ def compute_node_score(rated_list_data: RatedListData,
 Function that is called whenever we get the peer list of a node.
 
 ```python
-def on_get_peers_response(rated_list_data: RatedListData, child_id: NodeId, peers: Sequence[NodeId]):
+def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers: Sequence[NodeId]):
     
     for peer_id in peers:
         child_node: NodeRecord = None
@@ -144,7 +144,7 @@ def on_get_peers_response(rated_list_data: RatedListData, child_id: NodeId, peer
         rated_list_data.nodes[node_id].children.append(peer_id)
 
     for child_id in rated_list_data.nodes[node_id].children:
-        if child_id not in children:
+        if child_id not in peers:
             # Node no longer has child peer, remove link
             rated_list_data.nodes[node].children.remove(child_id)
             rated_list_data.nodes[child_id].parents.remove(node_id)
