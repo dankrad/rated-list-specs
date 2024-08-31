@@ -6,6 +6,7 @@ NodeId = Bytes32
 SampleId = uint64
 Root = Bytes32
 
+MAX_PEERS = 3
 ENDIANNESS = "little"
 
 
@@ -19,3 +20,5 @@ def uint_to_bytes(n: uint) -> bytes:
 
 def hash(data: bytes) -> Bytes32:
     return Bytes32(sha256(data).digest())
+
+

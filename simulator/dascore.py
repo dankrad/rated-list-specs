@@ -1,6 +1,7 @@
 from eth2spec.utils.ssz.ssz_typing import uint256, uint64, uint8
 from typing import List, Sequence
-from utils import NodeId, SampleId, bytes_to_uint64, uint_to_bytes, hash
+from utils import NodeId, SampleId, bytes_to_uint64, uint_to_bytes, hash, ENDIANNESS
+
 
 DATA_COLUMN_SIDECAR_SUBNET_COUNT = uint8(128)
 NUMBER_OF_COLUMNS = uint8(128)
@@ -14,12 +15,13 @@ def get_custody_columns(
     assert custody_subnet_count <= DATA_COLUMN_SIDECAR_SUBNET_COUNT
 
     subnet_ids: List[uint64] = []
-    current_id = uint256(int.from_bytes(node_id))
+    current_id = uint256(int.from_bytes(node_id,ENDIANNESS))
 
     while len(subnet_ids) < custody_subnet_count:
         subnet_id = bytes_to_uint64(
             hash(uint_to_bytes(uint256(current_id)))[0:8]
         ) % int(DATA_COLUMN_SIDECAR_SUBNET_COUNT)
+        print(subnet_id)
         if subnet_id not in subnet_ids:
             subnet_ids.append(subnet_id)
         if current_id == UINT256_MAX:

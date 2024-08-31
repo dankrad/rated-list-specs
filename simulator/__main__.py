@@ -1,6 +1,9 @@
 from dascore import get_custody_columns
 from node import Node
+from utils import NodeId
 import secrets
+from networkx import graph
+from simulator import Simulator
 
 
 def generate_node_ids(count):
@@ -12,8 +15,15 @@ def generate_node_ids(count):
 
 
 def main():
-    node = Node(secrets.token_bytes(32), generate_node_ids(50))
-    print(get_custody_columns(secrets.token_bytes(32)))
+    ## start the simulator-> add peers to the node -> block production
+    random_secret = secrets.token_bytes(32)
+    peers = generate_node_ids(50)
+    node = Node(random_secret, generate_node_ids(50))
+    
+    G = graph.Graph()
+    sim = Simulator(node, G)
+    sim.run([NodeId(node_id) for node_id in peers])
+    
 
 
 if __name__ == "__main__":

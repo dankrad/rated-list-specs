@@ -3,6 +3,15 @@ from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64
 from dataclasses import dataclass
 from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
+from enum import Enum
+
+class NodeProfile:
+    def __init__(self, honest, malicious, offline):
+        self.honest = honest
+        self.malicious = malicious
+        self.offline = offline
+
+    
 
 @dataclass
 class NodeRecord:
@@ -66,7 +75,7 @@ class Node:
                 self.dht.nodes[node_id].children.remove(child_id)
                 self.dht.nodes[child_id].parents.remove(node_id)
 
-                if len(child.parents) == 0:
+                if len(self.dht.nodes[child_id].parents) == 0:
                     del self.dht.nodes[child_id]
 
     def compute_node_score(self, block_root: Root, node_id: NodeId) -> float:
@@ -101,7 +110,7 @@ class Node:
     def on_request_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
-        node_record = self.dht.nodes[nodes_id]
+        node_record = self.dht.nodes[node_id]
         score_keeper = self.dht.scores[block_root]
 
         cur_ancestors = set(node_record.parents)
@@ -116,7 +125,7 @@ class Node:
     def on_response_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
-        node_record = self.dht.nodes[nodes_id]
+        node_record = self.dht.nodes[node_id]
         score_keeper = self.dht.scores[block_root]
 
         cur_ancestors = set(node_record.parents)
@@ -169,3 +178,5 @@ class Node:
             filter_score = sum([score for _, score in scores]) / len(scores) - 0.1
 
         return filtered_nodes
+
+
