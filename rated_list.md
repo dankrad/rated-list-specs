@@ -12,7 +12,6 @@ The below constants assume a max node degree of 100
 |     Name         | Value     |
 |------------------|-----------|
 | MAX_TREE_DEPTH   | 3         | 
-| MAX_ID_LIST      | 100       | 
 | MAX_CHILDREN     | 100       |
 | MAX_PARENTS      | 100       |
 
@@ -89,7 +88,7 @@ def compute_descendant_score(rated_list_data: RatedListData,
           len(score_keeper.descendants_contacted[node_id]) if len(score_keeper.descendants_contacted[node_id]) > 0 else 1.0
 ```
 
-#### `compute_node_score`
+### `compute_node_score`
 
 ```python
 def compute_node_score(rated_list_data: RatedListData,
@@ -126,7 +125,7 @@ def compute_node_score(rated_list_data: RatedListData,
     return best_score
 ```
 
-#### `on_get_peers_response`
+### `on_get_peers_response`
 
 Function that is called whenever we get the peer list of a node.
 
@@ -243,3 +242,73 @@ def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id:
             
     return filtered_nodes
 ```
+
+## Sample Distribution
+
+### Custody requirement
+
+Each node downloads and custodies a minimum of `CUSTODY_REQUIREMENT` subnets per slot. The particular subnets that the node is required to custody are selected pseudo-randomly (more on this below).
+
+A node *may* choose to custody and serve more than the minimum honesty requirement. Such a node explicitly advertises a number greater than `CUSTODY_REQUIREMENT` through the peer discovery mechanism, specifically by setting a higher value in the `csc`(custody_subnet_count) field within its ENR. This value can be increased up to `DATA_COLUMN_SIDECAR_SUBNET_COUNT`, indicating a super-full node.
+
+A node stores the custodied columns for the *duration of the pruning period* and responds to peer requests for samples on those columns.
+
+### Public, deterministic selection
+
+The particular columns that a node custodies are selected pseudo-randomly as a function (`get_custody_columns`) of the node-id and custody size -- importantly this function can be run by any party as the inputs are all public.
+
+*Note*: increasing the `custody_size` parameter for a given `node_id` extends the returned list (rather than being an entirely new shuffle) such that if `custody_size` is unknown, the default `CUSTODY_REQUIREMENT` will be correct for a subset of the node's custody.
+
+```python
+def get_custody_columns(node_id: NodeID, custody_subnet_count: uint8) -> Sequence[ColumnIndex]:
+    assert custody_subnet_count <= DATA_COLUMN_SIDECAR_SUBNET_COUNT
+
+    subnet_ids: List[uint64] = []
+    current_id = uint256(node_id)
+    while len(subnet_ids) < custody_subnet_count:
+        subnet_id = (
+            bytes_to_uint64(hash(uint_to_bytes(uint256(current_id)))[0:8])
+            % int(DATA_COLUMN_SIDECAR_SUBNET_COUNT)
+        )
+        if subnet_id not in subnet_ids:
+            subnet_ids.append(subnet_id)
+        if current_id == UINT256_MAX:
+            # Overflow prevention
+            current_id = NodeID(0)
+        current_id += 1
+
+    assert len(subnet_ids) == len(set(subnet_ids))
+
+    columns_per_subnet = NUMBER_OF_COLUMNS // int(DATA_COLUMN_SIDECAR_SUBNET_COUNT)
+    return sorted([
+        ColumnIndex(int(DATA_COLUMN_SIDECAR_SUBNET_COUNT) * i + subnet_id)
+        for i in range(columns_per_subnet)
+        for subnet_id in subnet_ids
+    ])
+```
+
+### Samples
+
+In the current state of DAS, blobs are extended using a one-dimensional erasure coding extension. The matrix comprises maximum `MAX_BLOBS_PER_BLOCK` rows and fixed `NUMBER_OF_COLUMNS` columns, with each row containing a `Blob` and its corresponding extension. Each column in the matrix is a sample with its id(`SampleId`) equal to the index of the column.
+
+### Sample Gossip Parameters
+
+For each sample -- use `data_sidecar_{subnet_id}` subnets, where `subnet_id` can be computed with the `compute_subnet_for_data_sidecar(sample_id: SampleId)` helper.
+
+```python
+def compute_subnet_for_data_sidecar(sample_id: SampleId) -> SubnetID:
+    return SubnetID(sample_id % DATA_COLUMN_SIDECAR_SUBNET_COUNT)
+```
+
+Verifiable samples(matrix columns) are distributed on the assigned subnet. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a sample on the sample subnet, a node can also utilize the Req/Resp protocol to query the missing sample from other peers.
+
+### Row (blob) custody
+
+In the one-dimension construction, a node samples the peers by requesting the whole `DataColumnSidecar`. In reconstruction, a node can reconstruct all the blobs by 50% of the columns. Note that nodes can still download the row via `blob_sidecar_{subnet_id}` subnets.
+
+The potential benefits of having row custody could include:
+
+1. Allow for more "natural" distribution of data to consumers -- e.g., roll-ups -- but honestly, they won't know a priori which row their blob is going to be included in in the block, so they would either need to listen to all rows or download a particular row after seeing the block. The former looks just like listening to column [0, N)  and the latter is req/resp instead of gossiping.
+2. Help with some sort of distributed reconstruction. Those with full rows can compute extensions and seed missing samples to the network. This would either need to be able to send individual points on the gossip or would need some sort of req/resp faculty, potentially similar to an `IHAVEPOINTBITFIELD` and `IWANTSAMPLE`.
+
+However, for simplicity, we don't assign row custody assignments to nodes in the current design.
