@@ -37,8 +37,8 @@ SampleId = uint64
 @dataclass
 class NodeRecord:
     node_id: NodeId
-    children: List[NodeRecord, MAX_CHILDREN]
-    parents: List[NodeRecord, MAX_PARENTS] # creates a doubly linked list
+    children: List[NodeId, MAX_CHILDREN]
+    parents: List[NodeId, MAX_PARENTS] # creates a doubly linked list
 ```
 
 ### ScoreKeeper
@@ -58,10 +58,10 @@ Data type to keep all information required to maintain a rated list instance
 
 ```python
 class RatedListData:
+    sample_mapping: Dict[SampleId, Set[NodeId]]
     nodes: Dict[NodeId, NodeRecord]
     scores: Dict[Bytes32, ScoreKeeper]
 ```
-
 
 #### `create_empty_node_record`
 
@@ -85,8 +85,8 @@ def compute_descendant_score(rated_list_data: RatedListData,
                              block_root: Root,
                              node_id: NodeId) -> float:
    score_keeper = rated_list_data.scores[block_root]
-   return score_keeper.descendants_contacted[node_id] /
-          score_keeper.descendants_replied[node_id]
+   return len(score_keeper.descendants_replied[node_id]) /
+          len(score_keeper.descendants_contacted[node_id]) if len(score_keeper.descendants_contacted[node_id]) > 0 else 0
 ```
 
 #### `compute_node_score`
@@ -131,27 +131,23 @@ def compute_node_score(rated_list_data: RatedListData,
 Function that is called whenever we get the peer list of a node.
 
 ```python
-def on_get_peers_response(rated_list_data: RatedListData, node: NodeId, children: Sequence[NodeId]):
+def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers: Sequence[NodeId]):
     
-    for child_id in children:
+    for peer_id in peers:
         child_node: NodeRecord = None
 
-        if child_id not in rated_list_data.nodes: 
-            child_node = create_empty_node_record(child_id)
-            rated_list_data.nodes[child_id] = child_node
+        if peer_id not in rated_list_data.nodes: 
+            child_node = NodeRecord(peer_id, [], [])
+            rated_list_data.nodes[peer_id] = child_node
 
-        child_node.parents.add(node)
-        
-        if child_id not in rated_list_data.nodes:
-            rated_list_data.nodes[child_id] = child_node
+        rated_list_data.nodes[peer_id].parents.append(node_id)
+        rated_list_data.nodes[node_id].children.append(peer_id)
 
-        rated_list_data.nodes[node].children.add(child_node)
-
-    for child_id in rated_list_data.nodes[node].children:
-        if child_id not in children:
+    for child_id in rated_list_data.nodes[node_id].children:
+        if child_id not in peers:
             # Node no longer has child peer, remove link
             rated_list_data.nodes[node].children.remove(child_id)
-            rated_list_data.nodes[child_id].parents.remove(node)
+            rated_list_data.nodes[child_id].parents.remove(node_id)
             if len(rated_list_data.nodes[child_id].parents) == 0:
                 rated_list_data.nodes.remove(child_id)
 ```
@@ -169,11 +165,7 @@ def on_request_score_update(rated_list_data: RatedListData,
     score_keeper = rated_list_data.scores[block_root]
     cur_ancestors = set(node_record.parents)
     while cur_ancestors:
-        new_ancestors = set                par_score = compute_descendant_score(rated_list_data, block_root, parent)
-                if parent not in new_path_scores or
-                    new_path_scores[parent] < par_score:
-                    new_path_scores[parent] = par_score
-()
+        new_ancestors = set()
         for ancestor in cur_ancestors:
             score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
             new_ancestors.update(ancestor.parents)
@@ -198,4 +190,56 @@ def on_response_score_update(rated_list_data: RatedListData,
             score_keeper.descendants_replied[ancestor].append((node_id, sample_id))
             new_ancestors.update(ancestor.parents)
         cur_ancestors = new_ancestors
+```
+
+### `add_samples_on_entry`
+
+```python
+def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId):
+    sample_ids = get_custody_columns(node_id)
+    for id in sample_ids:
+        if not rated_list_data.sample_mapping[id]:
+            rated_list_data.sample_mapping[id] = set()
+    
+        rated_list_data.sample_mapping[id].update(node_id)
+```
+
+### `remove_samples_on_exit`
+
+```python
+def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
+    sample_ids = get_custody_columns(node_id)
+    
+    for id in sample_ids:
+        if not rated_list_data.sample_mapping[id]:
+            continue
+
+        rated_list_data.sample_mapping[id].remove(node_id)
+```
+
+### `filter_nodes`
+
+```python
+def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> List[NodeId]:
+    scores = []
+    filter_score = 0.9
+    filtered_nodes = set()
+    evicted_nodes = set()
+
+    while len(filtered_nodes) == 0:
+        for node_id in rated_list_data.sample_mapping[sample_id]:
+            score = compute_node_score(rated_list_data, block_root, node_id)
+            scores.append((node_id, score))
+
+            if score >= filter_score and node not in evicted_nodes:
+                filtered_nodes.update(node_id)
+            elif score < filter_score:
+                evicted_nodes.update(rated_list_data.nodes[node_id])
+                evicted_nodes.update(rated_list_data.nodes[node_id].children)
+        
+        # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
+        filter_score = sum([score for _, score in scores])/ len(scores) - 0.1
+
+            
+    return filtered_nodes
 ```
