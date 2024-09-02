@@ -9,12 +9,19 @@ title: Draft
 
 The below constants assume a max node degree of 100
 
-|     Name         | Value     |
-|------------------|-----------|
-| MAX_TREE_DEPTH   | 3         | 
-| MAX_CHILDREN     | 100       |
-| MAX_PARENTS      | 100       |
-
+|     Name                              | Value         |
+|---------------------------------------|---------------|
+| MAX_TREE_DEPTH                        | 3             | 
+| MAX_CHILDREN                          | 100           |
+| MAX_PARENTS                           | 100           |
+| MAX_BLOBS_PER_BLOCK                   | 6             |
+| NUMBER_OF_COLUMNS                     | uint64(64)    |
+| Cell                                  | ByteVector[BYTES_PER_FIELD_ELEMENT * FIELD_ELEMENTS_PER_CELL] |
+| FIELD_ELEMENTS_PER_CELL               | uint64(64)    |
+| MAX_BLOB_COMMITMENTS_PER_BLOCK        | uint64(4096)  |
+| KZGProof                              | Bytes48       |
+| KZGCommitment                         | Bytes48       |
+| KZG_COMMITMENTS_INCLUSION_PROOF_DEPTH | uint64(4)     | 
 
 ## Custom types
 
@@ -36,6 +43,7 @@ SampleId = uint64
 @dataclass
 class NodeRecord:
     node_id: NodeId
+    csc: uint8
     children: List[NodeId, MAX_CHILDREN]
     parents: List[NodeId, MAX_PARENTS] # creates a doubly linked list
 ```
@@ -60,21 +68,6 @@ class RatedListData:
     sample_mapping: Dict[SampleId, Set[NodeId]]
     nodes: Dict[NodeId, NodeRecord]
     scores: Dict[Bytes32, ScoreKeeper]
-```
-
-#### `create_empty_node_record`
-
-```python
-def create_empty_node_record(id: NodeId) -> NodeRecord:
-    """ TODO: Add a description here """
-    
-    node_record = NodeRecord(
-        node_id: NodeId,
-        children: [], 
-        parents: []
-    )
-
-    return node_record
 ```
 
 ### `compute_descendant_score`
@@ -130,20 +123,20 @@ def compute_node_score(rated_list_data: RatedListData,
 Function that is called whenever we get the peer list of a node.
 
 ```python
-def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers: Sequence[NodeId]):
+def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers: Sequence[(NodeId, uint8)]):
     
-    for peer_id in peers:
+    for peer_id, csc in peers:
         child_node: NodeRecord = None
 
         if peer_id not in rated_list_data.nodes: 
-            child_node = NodeRecord(peer_id, [], [])
+            child_node = NodeRecord(peer_id, csc, [], [])
             rated_list_data.nodes[peer_id] = child_node
 
         rated_list_data.nodes[peer_id].parents.append(node_id)
         rated_list_data.nodes[node_id].children.append(peer_id)
 
     for child_id in rated_list_data.nodes[node_id].children:
-        if child_id not in peers:
+        if child_id not in [id for id, _ in peer]:
             # Node no longer has child peer, remove link
             rated_list_data.nodes[node].children.remove(child_id)
             rated_list_data.nodes[child_id].parents.remove(node_id)
@@ -194,8 +187,8 @@ def on_response_score_update(rated_list_data: RatedListData,
 ### `add_samples_on_entry`
 
 ```python
-def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId):
-    sample_ids = get_custody_columns(node_id)
+def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId, csc: uint8):
+    sample_ids = get_custody_columns(node_id, csc)
     for id in sample_ids:
         if not rated_list_data.sample_mapping[id]:
             rated_list_data.sample_mapping[id] = set()
@@ -206,8 +199,8 @@ def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId):
 ### `remove_samples_on_exit`
 
 ```python
-def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
-    sample_ids = get_custody_columns(node_id)
+def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId, csc: uint8):
+    sample_ids = get_custody_columns(node_id, csc)
     
     for id in sample_ids:
         if not rated_list_data.sample_mapping[id]:
@@ -300,15 +293,18 @@ def compute_subnet_for_data_sidecar(sample_id: SampleId) -> SubnetID:
     return SubnetID(sample_id % DATA_COLUMN_SIDECAR_SUBNET_COUNT)
 ```
 
-Verifiable samples(matrix columns) are distributed on the assigned subnet. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a sample on the sample subnet, a node can also utilize the Req/Resp protocol to query the missing sample from other peers.
+Verifiable samples(matrix columns) are distributed on the assigned subnet. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a sample on the sample subnet, a node can also utilize the Req/Resp protocol to query the missing sample from other peers. The payload of the subnet is of type `DataSidecar`
+
+```python
+class DataSidecar:
+    id: SampleId  # Index of column in extended matrix
+    sample: List[Cell, MAX_BLOB_COMMITMENTS_PER_BLOCK]
+    kzg_commitments: List[KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK]
+    kzg_proofs: List[KZGProof, MAX_BLOB_COMMITMENTS_PER_BLOCK]
+    signed_block_header: SignedBeaconBlockHeader
+    kzg_commitments_inclusion_proof: Vector[Bytes32, KZG_COMMITMENTS_INCLUSION_PROOF_DEPTH]
+```
 
 ### Row (blob) custody
 
 In the one-dimension construction, a node samples the peers by requesting the whole `DataColumnSidecar`. In reconstruction, a node can reconstruct all the blobs by 50% of the columns. Note that nodes can still download the row via `blob_sidecar_{subnet_id}` subnets.
-
-The potential benefits of having row custody could include:
-
-1. Allow for more "natural" distribution of data to consumers -- e.g., roll-ups -- but honestly, they won't know a priori which row their blob is going to be included in in the block, so they would either need to listen to all rows or download a particular row after seeing the block. The former looks just like listening to column [0, N)  and the latter is req/resp instead of gossiping.
-2. Help with some sort of distributed reconstruction. Those with full rows can compute extensions and seed missing samples to the network. This would either need to be able to send individual points on the gossip or would need some sort of req/resp faculty, potentially similar to an `IHAVEPOINTBITFIELD` and `IWANTSAMPLE`.
-
-However, for simplicity, we don't assign row custody assignments to nodes in the current design.
