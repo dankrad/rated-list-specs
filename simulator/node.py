@@ -5,19 +5,20 @@ from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
 from enum import Enum
 
+
 class NodeProfile:
     def __init__(self, honest, malicious, offline):
         self.honest = honest
         self.malicious = malicious
         self.offline = offline
 
-    
 
 @dataclass
 class NodeRecord:
-        node_id: NodeId
-        children: List[NodeId]
-        parents: List[NodeId]
+    node_id: NodeId
+    children: List[NodeId]
+    parents: List[NodeId]
+
 
 @dataclass
 class ScoreKeeper:
@@ -31,6 +32,7 @@ class ScoreKeeper:
 class RatedListDHT:
     """This class implements the rated list data structure"""
 
+    sample_mapping: Dict[SampleId, Set[NodeId]]
     nodes: Dict[NodeId, NodeRecord]
     scores: Dict[Root, ScoreKeeper]
 
@@ -38,14 +40,12 @@ class RatedListDHT:
 class Node:
     """This class implements a node in the network"""
 
-    def __init__(self, id: NodeId, peers: List[NodeId]):
+    def __init__(self, id: NodeId):
         print(" starting a new node in the network")
-
         self.own_id = id
-        self.dht = RatedListDHT({}, {})
+        self.dht = RatedListDHT({}, {}, {})
 
         self.dht.nodes[id] = NodeRecord(id, [], [])
-        self.on_get_peers_response(id, peers)
 
         print(" started a node in the node with nodeId - %s", id)
 
@@ -107,10 +107,15 @@ class Node:
 
         return best_score
 
+    # FIXME: the iteration is endless
     def on_request_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
         node_record = self.dht.nodes[node_id]
+
+        if block_root not in self.dht.scores:
+            self.dht.scores[block_root] = ScoreKeeper({}, {})
+
         score_keeper = self.dht.scores[block_root]
 
         cur_ancestors = set(node_record.parents)
@@ -118,10 +123,14 @@ class Node:
         while cur_ancestors:
             new_ancestors = set()
             for ancestor in cur_ancestors:
-                score_keeper.descendants_contacted[ancestor].append((node_id, sample_id))
-                new_ancestors.update(ancestor.parents)
+                if ancestor not in score_keeper.descendants_contacted:
+                    score_keeper.descendants_contacted[ancestor] = set()
+
+                score_keeper.descendants_contacted[ancestor].add((node_id, sample_id))
+                new_ancestors.update(self.dht.nodes[ancestor].parents)
             cur_ancestors = new_ancestors
 
+    # FIXME: the iteration is endless
     def on_response_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
@@ -133,8 +142,11 @@ class Node:
         while cur_ancestors:
             new_ancestors = set()
             for ancestor in cur_ancestors:
-                score_keeper.descendants_replied[ancestor].append((node_id, sample_id))
-                new_ancestors.update(ancestor.parents)
+                if ancestor not in score_keeper.descendants_replied:
+                    score_keeper.descendants_replied[ancestor] = set()
+
+                score_keeper.descendants_replied[ancestor].add((node_id, sample_id))
+                new_ancestors.update(self.dht.nodes[ancestor].parents)
             cur_ancestors = new_ancestors
 
     def add_samples_on_entry(self, node_id: NodeId):
@@ -142,17 +154,17 @@ class Node:
         sample_ids = get_custody_columns(node_id)
 
         for id in sample_ids:
-            if not self.dht.sample_mapping[id]:
+            if id not in self.dht.sample_mapping:
                 self.dht.sample_mapping[id] = set()
 
-            self.dht.sample_mapping[id].update(node_id)
+            self.dht.sample_mapping[id].add(node_id)
 
     def remove_samples_on_exit(self, node_id: NodeId):
         # TODO: support a variable custody count for nodes
         sample_ids = get_custody_columns(node_id)
 
         for id in sample_ids:
-            if not self.dht.sample_mapping[id]:
+            if id not in self.dht.sample_mapping:
                 continue
 
             self.dht.sample_mapping[id].remove(node_id)
@@ -179,4 +191,10 @@ class Node:
 
         return filtered_nodes
 
+    def request_sample(
+        self, node_id: NodeId, block_root: Root, samples: Sequence[SampleId]
+    ):
+        print("not implemented")
 
+    def get_peers(self, node_id: NodeId):
+        print("not implemented")

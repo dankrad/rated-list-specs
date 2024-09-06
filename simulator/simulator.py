@@ -1,84 +1,120 @@
 from node import Node, NodeProfile
-from networkx import Graph
+import networkx as nx
 import random as rn
-from utils import NodeId,SampleId, Root, MAX_PEERS
+from utils import NodeId, SampleId, Root, gen_node_id
 from eth2spec.utils.ssz.ssz_typing import Bytes32
-from typing import List, Sequence
+from typing import Sequence
 from dataclasses import dataclass
-from utils import bytes_to_uint64,uint_to_bytes
-from eth2spec.utils.ssz.ssz_typing import uint256, uint64, uint8
 import queue
+
 
 @dataclass
 class RequestQueueItem:
     node_id: NodeId
     sample_id: SampleId
     block_root: Bytes32
-    
 
+
+# TODO: make node profiles just an enum
 # TODO: simulate validator exits and entries. maybe we just allow a distribution for arrivals and exits.
 # TODO: add visualization
 
-class Simulator:
-    
-    def __init__(self, node: Node, graph: Graph, binding_vertex=None):
-        self.node = node
+
+class SimulatedNode(Node):
+    def __init__(self, graph: nx.Graph, binding_vertex=None):
+        super().__init__(gen_node_id())
         self.graph = graph
 
-        self.node.get_peers = self.get_peers
-        self.node.request_sample = self.request_sample
         self.request_queue = queue.Queue()
-        
 
-        # TODO: assign node ids to all graph vertices
+        self.graph_mapping = {}
 
-    def bind(self, profile: NodeProfile, node_ids: List[NodeId]):
-        
-        # TODO: add profile for a range of node_ids
-        # should also support randomly assigning profiles, assinging profiles at different levels
-        # assigning profiles for sybil testing etc.
+        if binding_vertex is None:
+            binding_vertex = rn.choice(list(self.graph.nodes))
 
-        for node_id in node_ids:
-            random_peer = None
-            while True:
-                random_peer = rn.choice(list(self.graph.nodes))
-                if self.graph.degree[random_peer]<=MAX_PEERS: break;             
-            
-            self.graph.add_node(node_id, profile=profile)
-            self.graph.add_edge(node_id, random_peer)
+        print(
+            "mapping " + str(self.own_id) + " to graph vertice " + str(binding_vertex)
+        )
 
+        # assign the node's id to the binding vertex
+        self.graph_mapping[binding_vertex] = self.own_id
+        nx.relabel_nodes(self.graph, self.graph_mapping, copy=False)
 
-    def request_sample(
-        self, node_id: NodeId, block_root: Root, samples: Sequence[SampleId]
-    ):
+        # assign a node id for every vertex in the graph
+        for vertex_id in list(self.graph.nodes):
+            if vertex_id != self.own_id:
+                self.graph_mapping[vertex_id] = gen_node_id()
+
+        # rename all vertices by their assigned node ids
+        nx.relabel_nodes(self.graph, self.graph_mapping, copy=False)
+
+    # NOTE: ideally this function should be defined in the node implementation
+    def request_sample(self, block_root: Root, samples: Sequence[SampleId]):
+        print("Requesting samples from for " + str(block_root))
         for sample in samples:
-            self.node.on_request_score_update(block_root, node_id, sample)
-            self.request_queue.put(RequestQueueItem(node_id=node_id,sample_id=sample,block_root=block_root))
+            nodes_with_sample = self.dht.sample_mapping[sample]
 
-            
+            # just pick the first node from the list
+            # TODO: come up with different startegies for this
+            node_id = nodes_with_sample.pop()
 
+            self.on_request_score_update(block_root, node_id, sample)
+            print("updated score for " + str(node_id))
+            self.request_queue.put(
+                RequestQueueItem(
+                    node_id=node_id, sample_id=sample, block_root=block_root
+                )
+            )
+
+    # NOTE: ideally this function should be defined in the node implementation
     def get_peers(self, node_id: NodeId):
-        
-        # TODO: should fetch all peers of a particular node id from the graph
-        
-        peers = [peer for peer in self.graph.neighbors(node_id)]
-        self.node.on_get_peers_response(node_id, peers)
+        peers = []
+
+        for peer_id in self.graph.neighbors(node_id):
+            peers.append(peer_id)
+            # TODO: We should have a workflow where nodes also get removed
+            self.add_samples_on_entry(peer_id)
+        self.on_get_peers_response(node_id, peers)
+
+    def bind(self, profile: NodeProfile, selector):
+        print("Binding profiles to nodes")
+        # TODO: instead of a selector function maybe we can define more parameters
+        for node_id, node_attr in self.graph.nodes.items():
+            if selector() and node_id != self.own_id:
+                node_attr["profile"] = profile
 
     def process_requests(self):
         # TODO: Read the queue of requests for each one check node profile and respond accordingly
-        # Call self.node.on_response_score_update(block_root, node_id, sample_id)
-        while self.request_queue.empty()!=True:
+        # Call on_response_score_update(block_root, node_id, sample_id)
+        # TODO: implemente node profile behaviours
+
+        while not self.request_queue.empty():
             request: RequestQueueItem = self.request_queue.get()
-            node_profile: NodeProfile = self.graph.nodes[request.node_id]
-            if node_profile.malicious: continue
-            self.node.on_response_score_update(
+            node_profile: NodeProfile = (
+                self.graph.nodes[request.node_id]["profile"]
+                if self.graph.nodes[request.node_id]["profile"]
+                else NodeProfile(True, False, False)
+            )
+
+            if node_profile.offline:
+                continue
+
+            self.on_response_score_update(
                 block_root=request.block_root,
                 node_id=request.node_id,
-                sample_id=request.sample_id
-                )
+                sample_id=request.sample_id,
+            )
 
-    def run(self, peers):
-        print("Starting rated list simulator ....")
-        self.graph.add_node(self.node.own_id)
-        self.bind(NodeProfile(malicious=False,honest=True,offline=False),peers)
-        
+    def construct_tree(self):
+        print("constructing the rated list tree from the graph")
+
+        # construct the tree till level 3 using a depth-first search
+        self.get_peers(self.own_id)  # add level 1 peers
+
+        # ask for level two peers from each level one peer
+        for level_one_peer_id in self.graph.neighbors(self.own_id):
+            self.get_peers(level_one_peer_id)  # add level 2 peers
+
+            # ask for level three peers from each level two peer
+            for level_two_peer_id in self.graph.neighbors(level_one_peer_id):
+                self.get_peers(level_two_peer_id)  # add level 3 peers

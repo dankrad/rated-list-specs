@@ -15,13 +15,12 @@ def get_custody_columns(
     assert custody_subnet_count <= DATA_COLUMN_SIDECAR_SUBNET_COUNT
 
     subnet_ids: List[uint64] = []
-    current_id = uint256(int.from_bytes(node_id,ENDIANNESS))
+    current_id = uint256(int.from_bytes(node_id, ENDIANNESS))
 
     while len(subnet_ids) < custody_subnet_count:
         subnet_id = bytes_to_uint64(
             hash(uint_to_bytes(uint256(current_id)))[0:8]
         ) % int(DATA_COLUMN_SIDECAR_SUBNET_COUNT)
-        print(subnet_id)
         if subnet_id not in subnet_ids:
             subnet_ids.append(subnet_id)
         if current_id == UINT256_MAX:

@@ -1,6 +1,7 @@
 from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64, uint
 from eth2spec.utils.ssz.ssz_impl import serialize
 from hashlib import sha256
+import secrets
 
 NodeId = Bytes32
 SampleId = uint64
@@ -22,3 +23,5 @@ def hash(data: bytes) -> Bytes32:
     return Bytes32(sha256(data).digest())
 
 
+def gen_node_id():
+    return NodeId(secrets.token_bytes(32))

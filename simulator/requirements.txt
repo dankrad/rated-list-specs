@@ -6,6 +6,7 @@ eth-utils==1.10.0
 eth2spec==0.11.3
 lru-dict==1.1.6
 mypy-extensions==1.0.0
+networkx==3.3
 py-ecc==2.0.0
 pycryptodome==3.9.4
 remerkleable==0.1.13
