@@ -1,14 +1,37 @@
-from dascore import get_custody_columns
 from node import NodeProfile
 import networkx as nx
 from simulator import SimulatedNode
-import random as rn
 from utils import gen_node_id
+import matplotlib.pyplot as plt
+
+
+# mimics a rated list tree without any cycles.
+def construct_acyclic_graph(degree: int = 5) -> nx.Graph:
+    G = nx.Graph()
+
+    current_node_count = 1
+
+    for level_1 in range(degree):
+        G.add_edge(0, current_node_count)
+        level_1 = current_node_count
+        current_node_count += 1
+
+        for i in range(degree):
+            G.add_edge(level_1, current_node_count)
+            level_2 = current_node_count
+            current_node_count += 1
+
+            for i in range(degree):
+                G.add_edge(level_2, current_node_count)
+                current_node_count += 1
+
+    return G
 
 
 def main():
-    erdos_renyi = nx.erdos_renyi_graph(200, 0.3)
-    sim_node = SimulatedNode(erdos_renyi)
+    acyclic_graph = construct_acyclic_graph(140)
+
+    sim_node = SimulatedNode(acyclic_graph)
     sim_node.construct_tree()
 
     offline_profile = NodeProfile(False, False, True)
@@ -20,8 +43,21 @@ def main():
     sim_node.bind(offline_profile, random_selector)
 
     # using a random block root just for initial testing
-    for i in range(64):
-        sim_node.request_sample(gen_node_id(), i)
+    for sample in range(128):
+        block_root = gen_node_id()
+
+        # FIXME: technically all samples must be in the mapping. we just need enough nodes in the network
+        if sample not in sim_node.dht.sample_mapping:
+            print("No record of nodes that serve sample: " + str(sample))
+            continue
+
+        nodes_with_sample = sim_node.filter_nodes(block_root, sample)
+
+        # just pick the first node from the list
+        # TODO: come up with different startegies for this
+        node_id = nodes_with_sample.pop()
+
+        sim_node.request_sample(node_id, block_root, sample)
         sim_node.process_requests()
 
     # print(sim_node.dht)

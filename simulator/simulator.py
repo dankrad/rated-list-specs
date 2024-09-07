@@ -49,19 +49,8 @@ class SimulatedNode(Node):
         nx.relabel_nodes(self.graph, self.graph_mapping, copy=False)
 
     # NOTE: ideally this function should be defined in the node implementation
-    def request_sample(self, block_root: Root, sample: SampleId):
+    def request_sample(self, node_id: NodeId, block_root: Root, sample: SampleId):
         print("Requesting samples from for " + str(block_root))
-
-        # FIXME: technically all samples must be in the mapping. we just need enough nodes in the network
-        if sample not in self.dht.sample_mapping:
-            print("No record of nodes that serve sample: " + str(sample))
-            return
-
-        nodes_with_sample = self.filter_nodes(block_root, sample)
-
-        # just pick the first node from the list
-        # TODO: come up with different startegies for this
-        node_id = nodes_with_sample.pop()
 
         self.on_request_score_update(block_root, node_id, sample)
         self.request_queue.put(
@@ -94,7 +83,7 @@ class SimulatedNode(Node):
             request: RequestQueueItem = self.request_queue.get()
             node_profile: NodeProfile = (
                 self.graph.nodes[request.node_id]["profile"]
-                if self.graph.nodes[request.node_id]["profile"]
+                if "profile" in self.graph.nodes[request.node_id]
                 else NodeProfile(True, False, False)
             )
 

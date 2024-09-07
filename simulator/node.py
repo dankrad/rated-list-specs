@@ -183,25 +183,28 @@ class Node:
             self.dht.sample_mapping[id].remove(node_id)
 
     def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> List[NodeId]:
-        scores = []
+        scores = {}
         filter_score = 0.9
         filtered_nodes = set()
-        evicted_nodes = set()
 
         while len(filtered_nodes) == 0:
+            evicted_nodes = set()
             for node_id in self.dht.sample_mapping[sample_id]:
-                score = self.compute_node_score(block_root, node_id)
-                scores.append((node_id, score))
+                if node_id not in scores:
+                    score = self.compute_node_score(block_root, node_id)
+                    scores[node_id] = score
 
-                if score >= filter_score and node_id not in evicted_nodes:
+                if scores[node_id] >= filter_score and node_id not in evicted_nodes:
                     filtered_nodes.add(node_id)
-                elif score < filter_score:
+                elif scores[node_id] < filter_score:
+                    print(f"Removed: {node_id} in filtering process")
                     evicted_nodes.add(node_id)
                     evicted_nodes.update(self.dht.nodes[node_id].children)
 
             # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
-            filter_score = sum([score for _, score in scores]) / len(scores) - 0.1
-        print("evicted nodes: ", evicted_nodes)
+            filter_score = (
+                sum([score for _, score in scores.items()]) / len(scores) - 0.1
+            )
         return filtered_nodes
 
     def request_sample(
