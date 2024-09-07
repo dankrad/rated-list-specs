@@ -20,10 +20,11 @@ def main():
     sim_node.bind(offline_profile, random_selector)
 
     # using a random block root just for initial testing
-    sim_node.request_sample(gen_node_id(), list(range(64)))
-    sim_node.process_requests()
+    for i in range(64):
+        sim_node.request_sample(gen_node_id(), i)
+        sim_node.process_requests()
 
-    print(sim_node.dht)
+    # print(sim_node.dht)
 
 
 if __name__ == "__main__":

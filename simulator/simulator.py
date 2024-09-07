@@ -49,22 +49,24 @@ class SimulatedNode(Node):
         nx.relabel_nodes(self.graph, self.graph_mapping, copy=False)
 
     # NOTE: ideally this function should be defined in the node implementation
-    def request_sample(self, block_root: Root, samples: Sequence[SampleId]):
+    def request_sample(self, block_root: Root, sample: SampleId):
         print("Requesting samples from for " + str(block_root))
-        for sample in samples:
-            nodes_with_sample = self.dht.sample_mapping[sample]
 
-            # just pick the first node from the list
-            # TODO: come up with different startegies for this
-            node_id = nodes_with_sample.pop()
+        # FIXME: technically all samples must be in the mapping. we just need enough nodes in the network
+        if sample not in self.dht.sample_mapping:
+            print("No record of nodes that serve sample: " + str(sample))
+            return
 
-            self.on_request_score_update(block_root, node_id, sample)
-            print("updated score for " + str(node_id))
-            self.request_queue.put(
-                RequestQueueItem(
-                    node_id=node_id, sample_id=sample, block_root=block_root
-                )
-            )
+        nodes_with_sample = self.filter_nodes(block_root, sample)
+
+        # just pick the first node from the list
+        # TODO: come up with different startegies for this
+        node_id = nodes_with_sample.pop()
+
+        self.on_request_score_update(block_root, node_id, sample)
+        self.request_queue.put(
+            RequestQueueItem(node_id=node_id, sample_id=sample, block_root=block_root)
+        )
 
     # NOTE: ideally this function should be defined in the node implementation
     def get_peers(self, node_id: NodeId):
@@ -97,6 +99,7 @@ class SimulatedNode(Node):
             )
 
             if node_profile.offline:
+                print("Rejected sample request", request)
                 continue
 
             self.on_response_score_update(

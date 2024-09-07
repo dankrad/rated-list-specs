@@ -50,12 +50,18 @@ class Node:
         print(" started a node in the node with nodeId - %s", id)
 
     def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
+        # if scores are being computed before shooting out the first request the scorekeeper
+        # object is not yet initialized
+        if block_root not in self.dht.scores:
+            return 1.0
+
         score_keeper = self.dht.scores[block_root]
+
         return (
             len(score_keeper.descendants_replied[node_id])
             / len(score_keeper.descendants_contacted[node_id])
             if len(score_keeper.descendants_contacted[node_id]) > 0
-            else 0
+            else 1.0
         )
 
     def on_get_peers_response(self, node_id: NodeId, peers: Sequence[NodeId]):
@@ -66,9 +72,16 @@ class Node:
                 child_node = NodeRecord(peer_id, [], [])
                 self.dht.nodes[peer_id] = child_node
 
+            # if one of the peers is already a parent. don't include it
+            # FIXME: there would still be cycles this condition just removes one-to-one links
+            if peer_id in self.dht.nodes[node_id].parents:
+                continue
+
             self.dht.nodes[peer_id].parents.append(node_id)
             self.dht.nodes[node_id].children.append(peer_id)
 
+        # if the peers response of the current node_id doesn't include some of
+        # the past children then remove them
         for child_id in self.dht.nodes[node_id].children:
             if child_id not in peers:
                 # Node no longer has child peer, remove link
@@ -181,14 +194,14 @@ class Node:
                 scores.append((node_id, score))
 
                 if score >= filter_score and node_id not in evicted_nodes:
-                    filtered_nodes.update(node_id)
+                    filtered_nodes.add(node_id)
                 elif score < filter_score:
-                    evicted_nodes.update(self.dht.nodes[node_id])
+                    evicted_nodes.add(node_id)
                     evicted_nodes.update(self.dht.nodes[node_id].children)
 
             # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
             filter_score = sum([score for _, score in scores]) / len(scores) - 0.1
-
+        print("evicted nodes: ", evicted_nodes)
         return filtered_nodes
 
     def request_sample(
