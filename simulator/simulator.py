@@ -116,6 +116,9 @@ class SimulatedNode(Node):
         if check_ancestor == self.own_id:
             return True
 
+        if check_ancestor == grand_child:
+            return True
+
         if check_ancestor in self.dht.nodes[grand_child].parents:
             return True
 
