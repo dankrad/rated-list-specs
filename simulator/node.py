@@ -50,12 +50,22 @@ class Node:
         print(" started a node in the node with nodeId - %s", id)
 
     def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
-        # if scores are being computed before shooting out the first request the scorekeeper
-        # object is not yet initialized
+        # if scores are being computed before shooting out the first request, then the scorekeeper
+        # object is not yet initialized. In this case we assign the best score for any node_id
         if block_root not in self.dht.scores:
             return 1.0
 
         score_keeper = self.dht.scores[block_root]
+
+        # Additionally, no previous sample requests might be made to a particular node_id's descendant
+        # before trying to calculate its score. In this case we assign the best score for the node_id
+        if node_id not in score_keeper.descendants_contacted:
+            return 1.0
+
+        # if the node_id is not in the reply then none of its descendants that were contacted replied
+        # so return 0
+        if node_id not in score_keeper.descendants_replied:
+            return 0
 
         return (
             len(score_keeper.descendants_replied[node_id])
@@ -182,7 +192,7 @@ class Node:
 
             self.dht.sample_mapping[id].remove(node_id)
 
-    def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> List[NodeId]:
+    def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> Set[NodeId]:
         scores = {}
         filter_score = 0.9
         filtered_nodes = set()

@@ -110,3 +110,22 @@ class SimulatedNode(Node):
             # ask for level three peers from each level two peer
             for level_two_peer_id in self.graph.neighbors(level_one_peer_id):
                 self.get_peers(level_two_peer_id)  # add level 3 peers
+
+    def is_ancestor(self, grand_child: NodeId, check_ancestor: NodeId) -> bool:
+        # all nodes are children(grand or great grand until tree depth) of root node
+        if check_ancestor == self.own_id:
+            return True
+
+        if check_ancestor in self.dht.nodes[grand_child].parents:
+            return True
+
+        # assuming the grand_child is at the last level check grand parents(level 1)
+        for parent in self.dht.nodes[grand_child].parents:
+            if check_ancestor in self.dht.nodes[parent].parents:
+                return True
+
+            # if our assumption is wrong the parents will be the root node itself
+            if parent == self.own_id:
+                return False
+
+        return False
