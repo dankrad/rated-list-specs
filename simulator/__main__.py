@@ -29,7 +29,8 @@ def construct_acyclic_graph(degree: int = 5) -> nx.Graph:
 
 
 def main():
-    acyclic_graph = construct_acyclic_graph(140)
+    acyclic_graph = construct_acyclic_graph(50)
+    # erdos_renyi = nx.erdos_renyi(20000, 0.3)
 
     sim_node = SimulatedNode(acyclic_graph)
     sim_node.construct_tree()
@@ -37,8 +38,12 @@ def main():
     offline_profile = NodeProfile(False, False, True)
 
     # randomly assign half of the nodes as malicious
-    def random_selector():
-        return True  # bool(rn.getrandbits(1))
+    def random_selector(node_id):
+        level1_child = sim_node.dht.nodes[sim_node.own_id].children[0]
+        if node_id in sim_node.dht.nodes[level1_child].children:
+            return True
+
+        return False
 
     sim_node.bind(offline_profile, random_selector)
 

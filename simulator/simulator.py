@@ -71,7 +71,7 @@ class SimulatedNode(Node):
         print("Binding profiles to nodes")
         # TODO: instead of a selector function maybe we can define more parameters
         for node_id, node_attr in self.graph.nodes.items():
-            if selector() and node_id != self.own_id:
+            if selector(node_id) and node_id != self.own_id:
                 node_attr["profile"] = profile
 
     def process_requests(self):
