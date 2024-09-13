@@ -83,8 +83,6 @@ class SimulatedNode(Node):
         nx.set_node_attributes(self.graph, attr_mapping)
 
     def process_requests(self):
-        # TODO: Read the queue of requests for each one check node profile and respond accordingly
-        # Call on_response_score_update(block_root, node_id, sample_id)
         # TODO: implemente node profile behaviours
 
         while not self.request_queue.empty():

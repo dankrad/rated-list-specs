@@ -82,7 +82,6 @@ class Node:
                 self.dht.nodes[peer_id] = child_node
 
             # if one of the peers is already a parent. don't include it
-            # FIXME: there would still be cycles this condition just removes one-to-one links
             if peer_id in self.dht.nodes[node_id].parents:
                 continue
 
@@ -130,7 +129,6 @@ class Node:
 
         return best_score
 
-    # FIXME: the iteration is endless
     def on_request_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
@@ -153,7 +151,6 @@ class Node:
                 new_ancestors.update(self.dht.nodes[ancestor].parents)
             cur_ancestors = new_ancestors
 
-    # FIXME: the iteration is endless
     def on_response_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
