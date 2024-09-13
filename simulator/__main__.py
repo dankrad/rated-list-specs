@@ -41,9 +41,12 @@ def main():
     offline_profile = NodeProfile(False, False, True)
 
     # mark all descendants children of a particular level 1 node offline
-    defunct_sub_tree_root = sim_node.dht.nodes[sim_node.own_id].children[0]
+    defunct_sub_tree_root = list(sim_node.dht.nodes[sim_node.own_id].children)[0]
 
     def random_selector(node_id):
+        # if node_id == defunct_sub_tree_root:
+        # return True
+
         if node_id in sim_node.dht.nodes[defunct_sub_tree_root].children:
             return True
 
@@ -87,6 +90,8 @@ def main():
     for evicted in evicted_nodes:
         if sim_node.is_ancestor(evicted, defunct_sub_tree_root):
             count += 1
+        else:
+            print(evicted, sim_node.dht.nodes[evicted].parents)
 
     print(f"{count}/{len(evicted_nodes)} evicted nodes are descendants of the subtree")
 

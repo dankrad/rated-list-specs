@@ -1,5 +1,5 @@
 from typing import List, Dict, Tuple, Set, Sequence
-from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64
+from eth2spec.utils.ssz.ssz_typing import Bytes32
 from dataclasses import dataclass
 from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
@@ -15,8 +15,8 @@ class NodeProfile:
 @dataclass
 class NodeRecord:
     node_id: NodeId
-    children: List[NodeId]
-    parents: List[NodeId]
+    children: Set[NodeId]
+    parents: Set[NodeId]
 
 
 @dataclass
@@ -44,7 +44,7 @@ class Node:
         self.own_id = id
         self.dht = RatedListDHT({}, {}, {})
 
-        self.dht.nodes[id] = NodeRecord(id, [], [])
+        self.dht.nodes[id] = NodeRecord(id, set(), set())
 
         print(" started a node in the node with nodeId - %s", id)
 
@@ -78,7 +78,7 @@ class Node:
             child_node: NodeRecord = None
 
             if peer_id not in self.dht.nodes:
-                child_node = NodeRecord(peer_id, [], [])
+                child_node = NodeRecord(peer_id, set(), set())
                 self.dht.nodes[peer_id] = child_node
 
             # if one of the peers is already a parent. don't include it
@@ -86,8 +86,8 @@ class Node:
             if peer_id in self.dht.nodes[node_id].parents:
                 continue
 
-            self.dht.nodes[peer_id].parents.append(node_id)
-            self.dht.nodes[node_id].children.append(peer_id)
+            self.dht.nodes[peer_id].parents.add(node_id)
+            self.dht.nodes[node_id].children.add(peer_id)
 
         # if the peers response of the current node_id doesn't include some of
         # the past children then remove them
@@ -101,6 +101,9 @@ class Node:
                     del self.dht.nodes[child_id]
 
     def compute_node_score(self, block_root: Root, node_id: NodeId) -> float:
+        if node_id == self.own_id:
+            return 1.0
+
         score = self.compute_descendant_score(block_root, node_id)
 
         cur_path_scores: Dict[NodeId, float] = {node_id: score}
