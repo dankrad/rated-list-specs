@@ -30,9 +30,12 @@ def construct_acyclic_graph(degree: int = 5) -> nx.Graph:
 
 def main():
     acyclic_graph = construct_acyclic_graph(50)
-    # erdos_renyi = nx.erdos_renyi(20000, 0.3)
+    # erdos_renyi = nx.erdos_renyi_graph(200, 0.3)
+    # path_graph = nx.path_graph(5)
 
-    sim_node = SimulatedNode(acyclic_graph)
+    sim_node = SimulatedNode(acyclic_graph, 0)
+    # sim_node = SimulatedNode(erdos_renyi)
+    # sim_node = SimulatedNode(path_graph)
     sim_node.construct_tree()
 
     offline_profile = NodeProfile(False, False, True)
@@ -66,11 +69,15 @@ def main():
 
         filtered_nodes = sim_node.filter_nodes(block_root, sample)
         all_nodes = sim_node.dht.sample_mapping[sample]
-        evicted_nodes.update(all_nodes - filtered_nodes)
 
         # just pick the first node from the list
         # TODO: come up with different startegies for this
-        node_id = filtered_nodes.pop()
+        if len(filtered_nodes) > 0:
+            evicted_nodes.update(all_nodes - filtered_nodes)
+            node_id = filtered_nodes.pop()
+        else:
+            print("No good nodes found for sample")
+            continue
 
         sim_node.request_sample(node_id, block_root, sample)
         sim_node.process_requests()

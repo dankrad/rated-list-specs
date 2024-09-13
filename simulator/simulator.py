@@ -50,7 +50,7 @@ class SimulatedNode(Node):
 
     # NOTE: ideally this function should be defined in the node implementation
     def request_sample(self, node_id: NodeId, block_root: Root, sample: SampleId):
-        print("Requesting samples from for " + str(block_root))
+        print("Requesting samples from", node_id)
 
         self.on_request_score_update(block_root, node_id, sample)
         self.request_queue.put(
@@ -70,9 +70,17 @@ class SimulatedNode(Node):
     def bind(self, profile: NodeProfile, selector):
         print("Binding profiles to nodes")
         # TODO: instead of a selector function maybe we can define more parameters
-        for node_id, node_attr in self.graph.nodes.items():
-            if selector(node_id) and node_id != self.own_id:
-                node_attr["profile"] = profile
+
+        attr_mapping = {}
+
+        for id, node in self.graph.nodes.items():
+            if id != self.own_id:
+                if selector(id):
+                    attr_mapping[id] = {"profile": profile}
+                else:
+                    attr_mapping[id] = {"profile": NodeProfile(True, False, False)}
+
+        nx.set_node_attributes(self.graph, attr_mapping)
 
     def process_requests(self):
         # TODO: Read the queue of requests for each one check node profile and respond accordingly

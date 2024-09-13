@@ -3,7 +3,6 @@ from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64
 from dataclasses import dataclass
 from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
-from enum import Enum
 
 
 class NodeProfile:
@@ -104,9 +103,7 @@ class Node:
     def compute_node_score(self, block_root: Root, node_id: NodeId) -> float:
         score = self.compute_descendant_score(block_root, node_id)
 
-        cur_path_scores: Dict[NodeId, float] = {
-            parent: score for parent in self.dht.nodes[node_id].parents
-        }
+        cur_path_scores: Dict[NodeId, float] = {node_id: score}
 
         best_score = 0.0
 
@@ -197,7 +194,7 @@ class Node:
         filter_score = 0.9
         filtered_nodes = set()
 
-        while len(filtered_nodes) == 0:
+        for i in range(2):
             evicted_nodes = set()
             for node_id in self.dht.sample_mapping[sample_id]:
                 if node_id not in scores:
@@ -206,11 +203,13 @@ class Node:
 
                 if scores[node_id] >= filter_score and node_id not in evicted_nodes:
                     filtered_nodes.add(node_id)
-                elif scores[node_id] < filter_score:
-                    print(f"Removed: {node_id} in filtering process")
+                else:
+                    # print(f"Removed: {node_id} with score {scores[node_id]}")
                     evicted_nodes.add(node_id)
                     evicted_nodes.update(self.dht.nodes[node_id].children)
 
+            if len(filtered_nodes) > 0:
+                break
             # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
             filter_score = (
                 sum([score for _, score in scores.items()]) / len(scores) - 0.1
