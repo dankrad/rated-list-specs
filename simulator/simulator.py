@@ -78,7 +78,7 @@ class SimulatedNode(Node):
                 if selector(id):
                     attr_mapping[id] = {"profile": profile}
                 else:
-                    attr_mapping[id] = {"profile": NodeProfile(True, False, False)}
+                    attr_mapping[id] = {"profile": NodeProfile.HONEST}
 
         nx.set_node_attributes(self.graph, attr_mapping)
 
@@ -90,7 +90,7 @@ class SimulatedNode(Node):
             node_profile: NodeProfile = (
                 self.graph.nodes[request.node_id]["profile"]
                 if "profile" in self.graph.nodes[request.node_id]
-                else NodeProfile(True, False, False)
+                else NodeProfile.HONEST
             )
 
             if node_profile.offline:

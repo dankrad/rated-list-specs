@@ -1,14 +1,13 @@
-from node import NodeProfile
 import networkx as nx
+from node import NodeProfile
 from simulator import SimulatedNode
 from utils import gen_node_id
-import matplotlib.pyplot as plt
 
 
 # mimics a rated list tree without any cycles.
 def construct_acyclic_graph(degree: int = 5) -> nx.Graph:
     G = nx.Graph()
-
+   
     current_node_count = 1
 
     for level_1 in range(degree):
@@ -38,7 +37,7 @@ def main():
     # sim_node = SimulatedNode(path_graph)
     sim_node.construct_tree()
 
-    offline_profile = NodeProfile(False, False, True)
+    offline_profile = NodeProfile.OFFLINE
 
     # mark all descendants children of a particular level 1 node offline
     defunct_sub_tree_root = list(sim_node.dht.nodes[sim_node.own_id].children)[0]

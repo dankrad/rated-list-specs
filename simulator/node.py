@@ -3,14 +3,13 @@ from eth2spec.utils.ssz.ssz_typing import Bytes32
 from dataclasses import dataclass
 from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
+from enum import Enum
 
-
-class NodeProfile:
-    def __init__(self, honest, malicious, offline):
-        self.honest = honest
-        self.malicious = malicious
-        self.offline = offline
-
+class NodeProfile(Enum):
+    HONEST = "honest"
+    OFFLINE = "offline"
+    MALICIOUS = "malicious"
+    
 
 @dataclass
 class NodeRecord:
