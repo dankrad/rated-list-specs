@@ -1,34 +1,40 @@
-import networkx as nx
+import rustworkx as rx
 from node import NodeProfile
 from simulator import SimulatedNode
 from utils import gen_node_id
+import time 
 
 
 # mimics a rated list tree without any cycles.
-def construct_acyclic_graph(degree: int = 5) -> nx.Graph:
-    G = nx.Graph()
+def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
+    G = rx.PyGraph()
    
     current_node_count = 1
+    G.add_node(0)
 
     for level_1 in range(degree):
-        G.add_edge(0, current_node_count)
+        G.add_node(current_node_count)
+        G.add_edge(0, current_node_count, None)
         level_1 = current_node_count
         current_node_count += 1
 
         for i in range(degree):
-            G.add_edge(level_1, current_node_count)
+            G.add_node(current_node_count)
+            G.add_edge(level_1, current_node_count, None)
             level_2 = current_node_count
             current_node_count += 1
 
             for i in range(degree):
-                G.add_edge(level_2, current_node_count)
+                G.add_node(current_node_count)
+                G.add_edge(level_2, current_node_count, None)
                 current_node_count += 1
-
     return G
 
 
 def main():
-    acyclic_graph = construct_acyclic_graph(50)
+    start_time = time.time()
+    
+    acyclic_graph = construct_acyclic_graph(5)
     # erdos_renyi = nx.erdos_renyi_graph(200, 0.3)
     # path_graph = nx.path_graph(5)
 
@@ -45,7 +51,7 @@ def main():
     def random_selector(node_id):
         # if node_id == defunct_sub_tree_root:
         # return True
-
+        
         if node_id in sim_node.dht.nodes[defunct_sub_tree_root].children:
             return True
 
@@ -93,6 +99,7 @@ def main():
             print(evicted, sim_node.dht.nodes[evicted].parents)
 
     print(f"{count}/{len(evicted_nodes)} evicted nodes are descendants of the subtree")
+    print(f"the simulator ran for {time.time()-start_time}s")
 
 
 if __name__ == "__main__":
