@@ -2,6 +2,7 @@ import rustworkx as rx
 from node import NodeProfile
 from simulator import SimulatedNode
 from utils import gen_node_id
+from conf import MAX_TREE_DEPTH
 import time 
 
 
@@ -11,6 +12,8 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
    
     current_node_count = 1
     G.add_node(0)
+    
+    
 
     for level_1 in range(degree):
         G.add_node(current_node_count)
@@ -28,13 +31,16 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
                 G.add_node(current_node_count)
                 G.add_edge(level_2, current_node_count, None)
                 current_node_count += 1
+                
+
     return G
 
 
 def main():
     start_time = time.time()
     
-    acyclic_graph = construct_acyclic_graph(5)
+    acyclic_graph = construct_acyclic_graph(50)
+    
     # erdos_renyi = nx.erdos_renyi_graph(200, 0.3)
     # path_graph = nx.path_graph(5)
 
@@ -76,6 +82,7 @@ def main():
             continue
 
         filtered_nodes = sim_node.filter_nodes(block_root, sample)
+        
         all_nodes = sim_node.dht.sample_mapping[sample]
 
         # just pick the first node from the list

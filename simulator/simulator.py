@@ -6,6 +6,8 @@ from typing import Dict
 from utils import NodeId, SampleId, Root, gen_node_id
 from eth2spec.utils.ssz.ssz_typing import Bytes32
 from dataclasses import dataclass
+from collections import deque
+from conf import MAX_TREE_DEPTH
 import queue
 
 
@@ -43,7 +45,7 @@ class SimulatedNode(Node):
         # assign the node's id to the binding vertex
         # self.graph_mapping[binding_vertex] = self.own_id
         self.graph_mapping[self.own_id] = binding_vertex
-        node_id = ""
+        
         # assign a node id for every vertex in the graph
         for vertex_id in self.graph.node_indices():
             if vertex_id != self.own_id:
@@ -71,6 +73,7 @@ class SimulatedNode(Node):
             # TODO: We should have a workflow where nodes also get removed
             self.add_samples_on_entry(self.graph[peer_id].node_id)
         self.on_get_peers_response(node_id, peers)
+       
 
     def bind(self, profile: NodeProfile, selector):
         print("Binding profiles to nodes")
@@ -79,9 +82,9 @@ class SimulatedNode(Node):
         for node in self.graph.nodes():
             if node.node_id != self.own_id:
                 if selector(node.node_id):
-                   self.graph[self.graph_mapping[node.node_id]].node_profile = profile 
+                    self.graph[self.graph_mapping[node.node_id]].node_profile = profile 
                 else:
-                   self.graph[self.graph_mapping[node.node_id]].node_profile = NodeProfile.HONEST
+                    self.graph[self.graph_mapping[node.node_id]].node_profile = NodeProfile.HONEST
 
         # nx.set_node_attributes(self.graph, attr_mapping)
 
@@ -104,18 +107,22 @@ class SimulatedNode(Node):
 
     def construct_tree(self):
         print("constructing the rated list tree from the graph")
-
         
-        # construct the tree till level 3 using a depth-first search
-        self.get_peers(self.own_id)  # add level 1 peers
+        # iterative BFS approach to find peers where max_tree_depth is parametrised
+        queue = deque([(self.own_id,1)])
+        
+        while queue:
+            current_node_id, current_level = queue.popleft()
+            
+            if current_level > MAX_TREE_DEPTH:
+                continue
+            
+            self.get_peers(current_node_id)
 
-        # ask for level two peers from each level one peer
-        for level_one_peer_id in self.graph.neighbors(self.graph_mapping[self.own_id]):
-            self.get_peers(self.graph[level_one_peer_id].node_id)  # add level 2 peers
-
-            # ask for level three peers from each level two peer
-            for level_two_peer_id in self.graph.neighbors(level_one_peer_id):
-                self.get_peers(self.graph[level_two_peer_id].node_id)  # add level 3 peers
+            for neighbor_id in self.graph.neighbors(self.graph_mapping[current_node_id]):
+                neighbor_node_id = self.graph[neighbor_id].node_id
+                queue.append((neighbor_node_id, current_level + 1))
+                
 
     def is_ancestor(self, grand_child: NodeId, check_ancestor: NodeId) -> bool:
         # all nodes are children(grand or great grand until tree depth) of root node

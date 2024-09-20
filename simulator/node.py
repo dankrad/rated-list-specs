@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from utils import NodeId, SampleId, Root
 from dascore import get_custody_columns
 from enum import Enum
+from conf import MAX_TREE_DEPTH
 
 class NodeProfile(Enum):
     HONEST = "honest"
@@ -193,7 +194,7 @@ class Node:
         filter_score = 0.9
         filtered_nodes = set()
 
-        for i in range(2):
+        for i in range(MAX_TREE_DEPTH-1):
             evicted_nodes = set()
             for node_id in self.dht.sample_mapping[sample_id]:
                 if node_id not in scores:
