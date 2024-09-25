@@ -14,14 +14,6 @@ The below constants assume a max node degree of 100
 | MAX_TREE_DEPTH                        | 3             | 
 | MAX_CHILDREN                          | 100           |
 | MAX_PARENTS                           | 100           |
-| MAX_BLOBS_PER_BLOCK                   | 6             |
-| NUMBER_OF_COLUMNS                     | uint64(64)    |
-| Cell                                  | ByteVector[BYTES_PER_FIELD_ELEMENT * FIELD_ELEMENTS_PER_CELL] |
-| FIELD_ELEMENTS_PER_CELL               | uint64(64)    |
-| MAX_BLOB_COMMITMENTS_PER_BLOCK        | uint64(4096)  |
-| KZGProof                              | Bytes48       |
-| KZGCommitment                         | Bytes48       |
-| KZG_COMMITMENTS_INCLUSION_PROOF_DEPTH | uint64(4)     | 
 
 ## Custom types
 
@@ -43,7 +35,7 @@ SampleId = uint64
 @dataclass
 class NodeRecord:
     node_id: NodeId
-    csc: uint8
+    custody_size: uint8
     children: List[NodeId, MAX_CHILDREN]
     parents: List[NodeId, MAX_PARENTS] # creates a doubly linked list
 ```
@@ -187,7 +179,7 @@ def on_response_score_update(rated_list_data: RatedListData,
 ### `add_samples_on_entry`
 
 ```python
-def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId, csc: uint8):
+def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId, custody_size: uint8):
     sample_ids = get_custody_columns(node_id, csc)
     for id in sample_ids:
         if not rated_list_data.sample_mapping[id]:
@@ -199,7 +191,7 @@ def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId, csc: u
 ### `remove_samples_on_exit`
 
 ```python
-def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId, csc: uint8):
+def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId, custody_size: uint8):
     sample_ids = get_custody_columns(node_id, csc)
     
     for id in sample_ids:
@@ -236,75 +228,99 @@ def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id:
     return filtered_nodes
 ```
 
-## Sample Distribution
+## Samples and Distribution
 
-### Custody requirement
-
-Each node downloads and custodies a minimum of `CUSTODY_REQUIREMENT` subnets per slot. The particular subnets that the node is required to custody are selected pseudo-randomly (more on this below).
-
-A node *may* choose to custody and serve more than the minimum honesty requirement. Such a node explicitly advertises a number greater than `CUSTODY_REQUIREMENT` through the peer discovery mechanism, specifically by setting a higher value in the `csc`(custody_subnet_count) field within its ENR. This value can be increased up to `DATA_COLUMN_SIDECAR_SUBNET_COUNT`, indicating a super-full node.
-
-A node stores the custodied columns for the *duration of the pruning period* and responds to peer requests for samples on those columns.
-
-### Public, deterministic selection
-
-The particular columns that a node custodies are selected pseudo-randomly as a function (`get_custody_columns`) of the node-id and custody size -- importantly this function can be run by any party as the inputs are all public.
-
-*Note*: increasing the `custody_size` parameter for a given `node_id` extends the returned list (rather than being an entirely new shuffle) such that if `custody_size` is unknown, the default `CUSTODY_REQUIREMENT` will be correct for a subset of the node's custody.
+As per the fulldanksharding proposal, the protocol supports 256 blobs, each of size of 128KB. 
+1. ***Matrix Construction***: Each `Blob` is divided into 256 `Cell`s. All the blobs stacked one over the other gives us a matrix of size of 256x256 cells.
+    * Each `Cell` is then 512 bytes of blob data. 
+2. ***Matrix Extension***: The matrix is first extended row-wise and then column-wise using Reed-Solomon codes to gives us a matrix of size 512x512 cells. This is the final size of the matrix, hence `NUM_ROWS = 512 = NUM_COLS`
+3. ***Matrix Integrity***: KZG Polynomial Commitments are used to prove the membership of each cell in a matrix. Each `Cell` then is accompanied with a KZG opening proof to make a `Sample`. The proofs are made against commitments which are part of the block header.
+    * Each KZG opening/proof is 48 bytes in size making the `Sample` 560 bytes in size (without other metdata)
 
 ```python
-def get_custody_columns(node_id: NodeID, custody_subnet_count: uint8) -> Sequence[ColumnIndex]:
-    assert custody_subnet_count <= DATA_COLUMN_SIDECAR_SUBNET_COUNT
+@dataclass
+class Sample(Container):
+    cell: Cell
+    kzg_proof: KZGProof
+    id: SampleId
+```
 
-    subnet_ids: List[uint64] = []
+### Constants
+
+| Name                                  |   Value                   |
+|---------------------------------------|---------------------------|
+| `MAX_BLOBS_PER_BLOCK`                 | 256                       |
+| `NUM_ROWS = NUM_COLS`                 | 512                       |
+| `UINT256_MAX`                         | `uint256(2**256 - 1)`     |
+| `MAX_BLOB_COMMITMENTS_PER_BLOCK`      | 256                       |
+| `CUSTODY_REQUIREMENT`                 | 2                         |
+
+### Custom Types
+
+| Name                                  |   Type                    |
+|---------------------------------------|---------------------------|
+| RowIndex                              | uint64                    |
+| ColumnIndex                           | uint64                    |
+| Cell                                  | ByteVector[512]           |
+| KZGProof                              | Bytes48                   |
+
+### Sample Custody
+
+Participating nodes custody entire rows and columns but sampling peers download individual samples. Each node downloads and custodies a minimum of `CUSTODY_REQUIREMENT` number of rows and columns per slot. The particular rows and columns  that the node is required to custody are selected pseudo-randomly using `get_custody_rows_and_columns`. A node *may* choose to custody and serve more than the minimum honesty requirement. Such a node explicitly advertises a number greater than `CUSTODY_REQUIREMENT` through the peer discovery mechanism, specifically by setting a higher value in the `custody_size` field within its ENR. This value can be increased up to `NUM_ROWS = NUM_COLS`, indicating a super-full node.
+
+The below function can be run by any party as the inputs are all public. Increasing the `custody_size` parameter for a given `node_id` extends the returned list (rather than being an entirely new shuffle) such that if `custody_size` is unknown, the default `CUSTODY_REQUIREMENT` will be correct for a subset of the node's custody.
+
+```python
+def get_custody_rows_and_columns(node_id: NodeId, custody_size: uint8) -> (Sequence[uint64], Sequence[uint64]):
+    assert custody_subnet_count <= NUM_ROWS
+
+    row_ids: List[uint64] = []
+    col_ids: List[uint64] = []
+
     current_id = uint256(node_id)
-    while len(subnet_ids) < custody_subnet_count:
-        subnet_id = (
-            bytes_to_uint64(hash(uint_to_bytes(uint256(current_id)))[0:8])
-            % int(DATA_COLUMN_SIDECAR_SUBNET_COUNT)
+
+    while len(row_ids) < custody_size:
+        row_id = (
+            bytes_to_uint64(hash(uint_to_bytes(current_id))[0:8])
+            % int(NUM_ROWS)
         )
-        if subnet_id not in subnet_ids:
-            subnet_ids.append(subnet_id)
+
+        col_id = (
+            bytes_to_uint64(hash(uint_to_bytes(current_id))[8:16])
+            % int(NUM_COLS)
+        )
+
+        if row_id not in row_ids:
+            row_ids.append(row_id)
+        
+        if col_id not in col_ids:
+            col_ids.append(col_id)
+
         if current_id == UINT256_MAX:
             # Overflow prevention
             current_id = NodeID(0)
         current_id += 1
 
-    assert len(subnet_ids) == len(set(subnet_ids))
+    assert len(row_ids) == len(set(row_ids))
+    assert len(col_ids) == len(set(col_ids))
 
-    columns_per_subnet = NUMBER_OF_COLUMNS // int(DATA_COLUMN_SIDECAR_SUBNET_COUNT)
-    return sorted([
-        ColumnIndex(int(DATA_COLUMN_SIDECAR_SUBNET_COUNT) * i + subnet_id)
-        for i in range(columns_per_subnet)
-        for subnet_id in subnet_ids
-    ])
+    return (sorted(row_ids), sorted(col_ids))
 ```
 
-### Samples
-
-In the current state of DAS, blobs are extended using a one-dimensional erasure coding extension. The matrix comprises maximum `MAX_BLOBS_PER_BLOCK` rows and fixed `NUMBER_OF_COLUMNS` columns, with each row containing a `Blob` and its corresponding extension. Each column in the matrix is a sample with its id(`SampleId`) equal to the index of the column.
-
-### Sample Gossip Parameters
-
-For each sample -- use `data_sidecar_{subnet_id}` subnets, where `subnet_id` can be computed with the `compute_subnet_for_data_sidecar(sample_id: SampleId)` helper.
+For each custodied row or column, nodes use `data_sidecar_{row/column}_{subnet_id}` subnets, where `subnet_id` can be computed with the `compute_subnet_for_data_sidecar(index: uint64)` helper.
 
 ```python
-def compute_subnet_for_data_sidecar(sample_id: SampleId) -> SubnetID:
-    return SubnetID(sample_id % DATA_COLUMN_SIDECAR_SUBNET_COUNT)
+def compute_subnet_for_data_sidecar(index: uint64) -> uint64:
+    return uint64(index % NUM_OF_ROW_OR_COL_SUBNETS)
 ```
 
-Verifiable samples(matrix columns) are distributed on the assigned subnet. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a sample on the sample subnet, a node can also utilize the Req/Resp protocol to query the missing sample from other peers. The payload of the subnet is of type `DataSidecar`
+These subnets are used to distribute samples beloging to the row or column. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a row/column on the subnet, a node can also utilize the Req/Resp protocol to query the missing row/column from other peers. Every row or column distributed as a custody sample is of type `DataSidecar`. A node stores the custodied rows and columns for the *duration of the pruning period* and responds to peer requests for samples.
 
 ```python
 class DataSidecar:
-    id: SampleId  # Index of column in extended matrix
-    sample: List[Cell, MAX_BLOB_COMMITMENTS_PER_BLOCK]
-    kzg_commitments: List[KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK]
-    kzg_proofs: List[KZGProof, MAX_BLOB_COMMITMENTS_PER_BLOCK]
-    signed_block_header: SignedBeaconBlockHeader
-    kzg_commitments_inclusion_proof: Vector[Bytes32, KZG_COMMITMENTS_INCLUSION_PROOF_DEPTH]
+    id: SampleId  # for index of column the row coordinate is 0 and vice versa for row index
+    sample: List[Cell, NUM_ROWS]
+    kzg_proofs: List[KZGProof, NUM_ROWS]
 ```
 
-### Row (blob) custody
-
-In the one-dimension construction, a node samples the peers by requesting the whole `DataColumnSidecar`. In reconstruction, a node can reconstruct all the blobs by 50% of the columns. Note that nodes can still download the row via `blob_sidecar_{subnet_id}` subnets.
+*Note: It is assumed that the kzg commitments, their inclusion proofs are gossiped along with the block header on a seperate subnet.*
