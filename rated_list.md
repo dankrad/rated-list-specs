@@ -7,26 +7,38 @@ title: Draft
 
 ## Constants
 
-The below constants assume a max node degree of 100
-
-|     Name                              | Value         |
-|---------------------------------------|---------------|
-| MAX_TREE_DEPTH                        | 3             | 
-| MAX_CHILDREN                          | 100           |
-| MAX_PARENTS                           | 100           |
+| Name                                  |   Value                   |
+|---------------------------------------|---------------------------|
+| `MAX_BLOBS_PER_BLOCK`                 | 256                       |
+| `NUM_ROWS = NUM_COLS`                 | 512                       |
+| `UINT256_MAX`                         | `uint256(2**256 - 1)`     |
+| `MAX_BLOB_COMMITMENTS_PER_BLOCK`      | 256                       |
+| `CUSTODY_REQUIREMENT`                 | 2                         |
+| `MAX_TREE_DEPTH`                      | 3                         | 
+| `MAX_CHILDREN`                        | 100                       |
+| `MAX_PARENTS`                         | 100                       |
+| `NUM_OF_ROW_OR_COL_SUBNETS`           | (64)TBD                   |
 
 ## Custom types
 
-We assume all peer ids (interchangeably called node ids) are 256-bit strings represented as `Bytes32`
+### Basic types
+
+| Name                                  |   Type                    |
+|---------------------------------------|---------------------------|
+| RowIndex                              | uint64                    |
+| ColumnIndex                           | uint64                    |
+| Cell                                  | ByteVector[512]           |
+| KZGProof                              | Bytes48                   |
+| NodeId                                | Bytes32                   |
+| CustodySize                           | uint64                    |
+| SubnetId                              | uint64                    |
+
+### `SampleId`
+
+We will represent SampleIds as a tuple of integers
 
 ```python
-NodeId = Bytes32
-```
-
-We will represent SampleIds as integers, although they could potentially be represented as pairs in the future
-
-```python
-SampleId = uint64
+SampleId = Tuple[RowIndex, ColumnIndex]
 ```
 
 ### `NodeRecord`
@@ -35,7 +47,7 @@ SampleId = uint64
 @dataclass
 class NodeRecord:
     node_id: NodeId
-    custody_size: uint8
+    custody_size: CustodySize
     children: List[NodeId, MAX_CHILDREN]
     parents: List[NodeId, MAX_PARENTS] # creates a doubly linked list
 ```
@@ -45,6 +57,7 @@ class NodeRecord:
 Data type to keep the score for one DAS query (corresponding to one block)
 
 ```python
+@dataclass
 class ScoreKeeper:
     descendants_contacted: Dict[NodeId, Set[Tuple[NodeId, SampleId]]]
     descendants_replied: Dict[NodeId, Set[Tuple[NodeId, SampleId]]]
@@ -56,6 +69,7 @@ class ScoreKeeper:
 Data type to keep all information required to maintain a rated list instance
 
 ```python
+@dataclass
 class RatedListData:
     sample_mapping: Dict[SampleId, Set[NodeId]]
     nodes: Dict[NodeId, NodeRecord]
@@ -79,11 +93,6 @@ def compute_descendant_score(rated_list_data: RatedListData,
 def compute_node_score(rated_list_data: RatedListData,
                        block_root: Root,
                        node_id: NodeId) -> float:
-    # TODO:
-    # For each path in which the node appears from the root of the tree, the "pathScore" is the `descendant_score` of the lowest node in the path
-    # Return the highest score of any such path
-    # This might require refactoring the data structure for more efficient
-    # computation
 
     score = compute_descendant_score(rated_list_data, block_root, node_id)
 
@@ -115,13 +124,13 @@ def compute_node_score(rated_list_data: RatedListData,
 Function that is called whenever we get the peer list of a node.
 
 ```python
-def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers: Sequence[(NodeId, uint8)]):
+def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers: Sequence[(NodeId, CustodySize)]):
     
-    for peer_id, csc in peers:
+    for peer_id, custody_size in peers:
         child_node: NodeRecord = None
 
         if peer_id not in rated_list_data.nodes: 
-            child_node = NodeRecord(peer_id, csc, [], [])
+            child_node = NodeRecord(peer_id, custody_size, [], [])
             rated_list_data.nodes[peer_id] = child_node
 
         rated_list_data.nodes[peer_id].parents.append(node_id)
@@ -179,26 +188,43 @@ def on_response_score_update(rated_list_data: RatedListData,
 ### `add_samples_on_entry`
 
 ```python
-def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId, custody_size: uint8):
-    sample_ids = get_custody_columns(node_id, csc)
-    for id in sample_ids:
-        if not rated_list_data.sample_mapping[id]:
-            rated_list_data.sample_mapping[id] = set()
+def add_samples_on_entry(rated_list_data: RatedListData, node_id: NodeId, custody_size: CustodySize):
+    row_ids, col_ids = get_custody_rows_and_columns(node_id, custody_size)
     
-        rated_list_data.sample_mapping[id].update(node_id)
+    for i, row_id in enumerate(row_ids):
+        sample_id = SampleId((row_id, i))
+        if not rated_list_data.sample_mapping[sample_id]:
+            rated_list_data.sample_mapping[sample_id] = set()
+    
+        rated_list_data.sample_mapping[sample_id].update(node_id)
+    
+    for i, col_id in enumerate(col_ids):
+        sample_id = SampleId((i, col_id))
+        if not rated_list_data.sample_mapping[sample_id]:
+            rated_list_data.sample_mapping[sample_id] = set()
+    
+        rated_list_data.sample_mapping[sample_id].update(node_id)
 ```
 
 ### `remove_samples_on_exit`
 
 ```python
-def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId, custody_size: uint8):
-    sample_ids = get_custody_columns(node_id, csc)
+def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId, custody_size: CustodySize):
+    row_ids, col_ids = get_custody_rows_and_columns(node_id, custody_size)
     
-    for id in sample_ids:
-        if not rated_list_data.sample_mapping[id]:
-            continue
-
-        rated_list_data.sample_mapping[id].remove(node_id)
+    for i, row_id in enumerate(row_ids):
+        sample_id = SampleId((row_id, i))
+        if not rated_list_data.sample_mapping[sample_id]:
+            rated_list_data.sample_mapping[sample_id] = set()
+    
+        rated_list_data.sample_mapping[sample_id].remove(node_id)
+    
+    for i, col_id in enumerate(col_ids):
+        sample_id = SampleId((i, col_id))
+        if not rated_list_data.sample_mapping[sample_id]:
+            rated_list_data.sample_mapping[sample_id] = set()
+    
+        rated_list_data.sample_mapping[sample_id].remove(node_id)
 ```
 
 ### `filter_nodes`
@@ -245,37 +271,18 @@ class Sample(Container):
     id: SampleId
 ```
 
-### Constants
-
-| Name                                  |   Value                   |
-|---------------------------------------|---------------------------|
-| `MAX_BLOBS_PER_BLOCK`                 | 256                       |
-| `NUM_ROWS = NUM_COLS`                 | 512                       |
-| `UINT256_MAX`                         | `uint256(2**256 - 1)`     |
-| `MAX_BLOB_COMMITMENTS_PER_BLOCK`      | 256                       |
-| `CUSTODY_REQUIREMENT`                 | 2                         |
-
-### Custom Types
-
-| Name                                  |   Type                    |
-|---------------------------------------|---------------------------|
-| RowIndex                              | uint64                    |
-| ColumnIndex                           | uint64                    |
-| Cell                                  | ByteVector[512]           |
-| KZGProof                              | Bytes48                   |
-
-### Sample Custody
+### Custody
 
 Participating nodes custody entire rows and columns but sampling peers download individual samples. Each node downloads and custodies a minimum of `CUSTODY_REQUIREMENT` number of rows and columns per slot. The particular rows and columns  that the node is required to custody are selected pseudo-randomly using `get_custody_rows_and_columns`. A node *may* choose to custody and serve more than the minimum honesty requirement. Such a node explicitly advertises a number greater than `CUSTODY_REQUIREMENT` through the peer discovery mechanism, specifically by setting a higher value in the `custody_size` field within its ENR. This value can be increased up to `NUM_ROWS = NUM_COLS`, indicating a super-full node.
 
 The below function can be run by any party as the inputs are all public. Increasing the `custody_size` parameter for a given `node_id` extends the returned list (rather than being an entirely new shuffle) such that if `custody_size` is unknown, the default `CUSTODY_REQUIREMENT` will be correct for a subset of the node's custody.
 
 ```python
-def get_custody_rows_and_columns(node_id: NodeId, custody_size: uint8) -> (Sequence[uint64], Sequence[uint64]):
+def get_custody_rows_and_columns(node_id: NodeId, custody_size: CustodySize) -> (Sequence[RowIndex], Sequence[ColumnIndex]):
     assert custody_subnet_count <= NUM_ROWS
 
-    row_ids: List[uint64] = []
-    col_ids: List[uint64] = []
+    row_ids: List[RowIndex] = []
+    col_ids: List[ColumnIndex] = []
 
     current_id = uint256(node_id)
 
@@ -304,23 +311,21 @@ def get_custody_rows_and_columns(node_id: NodeId, custody_size: uint8) -> (Seque
     assert len(row_ids) == len(set(row_ids))
     assert len(col_ids) == len(set(col_ids))
 
-    return (sorted(row_ids), sorted(col_ids))
+    return (sorted([RowIndex(row_id) for row_id in row_ids]), sorted([ColumnIndex(col_id) for col_id in col_ids]))
 ```
 
 For each custodied row or column, nodes use `data_sidecar_{row/column}_{subnet_id}` subnets, where `subnet_id` can be computed with the `compute_subnet_for_data_sidecar(index: uint64)` helper.
 
 ```python
-def compute_subnet_for_data_sidecar(index: uint64) -> uint64:
+def compute_subnet_for_data_sidecar(index: Union[ColumnIndex, RowIndex]) -> SubnetId:
     return uint64(index % NUM_OF_ROW_OR_COL_SUBNETS)
 ```
 
-These subnets are used to distribute samples beloging to the row or column. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a row/column on the subnet, a node can also utilize the Req/Resp protocol to query the missing row/column from other peers. Every row or column distributed as a custody sample is of type `DataSidecar`. A node stores the custodied rows and columns for the *duration of the pruning period* and responds to peer requests for samples.
+These subnets are used to distribute samples belonging to the row or column. To custody a particular sample, a node joins the respective gossipsub subnet. If a node fails to get a row/column on the subnet, a node can also utilize the Req/Resp protocol to query the missing row/column from other peers. Every row or column distributed as a custody sample is of type `DataSidecar`. As a matter of fact, `DataSideCar` is just list of samples that a node requests for. In the case of custody the requested samples belong to the same row or column. A node stores the custodied rows and columns for the *duration of the pruning period* and responds to peer requests for samples.
 
 ```python
 class DataSidecar:
-    id: SampleId  # for index of column the row coordinate is 0 and vice versa for row index
-    sample: List[Cell, NUM_ROWS]
-    kzg_proofs: List[KZGProof, NUM_ROWS]
+    samples: List[Sample, NUM_ROWS]
 ```
 
-*Note: It is assumed that the kzg commitments, their inclusion proofs are gossiped along with the block header on a seperate subnet.*
+*Note: It is assumed that the kzg commitments and their inclusion proofs are gossiped along with the block header on a seperate subnet.*
