@@ -1,21 +1,17 @@
 import rustworkx as rx
-from node import NodeProfile
-from simulator import SimulatedNode
+from simulator import SimulatedNode, NodeProfile
 from utils import gen_node_id
-from conf import MAX_TREE_DEPTH
-import time 
+import time
 
 
 # mimics a rated list tree without any cycles.
 def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
     G = rx.PyGraph()
-   
+
     current_node_count = 1
     G.add_node(0)
-    
-    
 
-    for level_1 in range(degree):
+    for i in range(degree):
         G.add_node(current_node_count)
         G.add_edge(0, current_node_count, None)
         level_1 = current_node_count
@@ -31,33 +27,31 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
                 G.add_node(current_node_count)
                 G.add_edge(level_2, current_node_count, None)
                 current_node_count += 1
-                
 
     return G
 
 
 def main():
     start_time = time.time()
-    
-    acyclic_graph = construct_acyclic_graph(50)
-    
-    # erdos_renyi = nx.erdos_renyi_graph(200, 0.3)
-    # path_graph = nx.path_graph(5)
 
-    sim_node = SimulatedNode(acyclic_graph, 0)
-    # sim_node = SimulatedNode(erdos_renyi)
-    # sim_node = SimulatedNode(path_graph)
+    # acyclic_graph = construct_acyclic_graph(100)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
+
+    # sim_node = SimulatedNode(acyclic_graph, 0)
+    sim_node = SimulatedNode(erdos_renyi_graph)
+
     sim_node.construct_tree()
 
     offline_profile = NodeProfile.OFFLINE
 
     # mark all descendants children of a particular level 1 node offline
-    defunct_sub_tree_root = list(sim_node.dht.nodes[sim_node.own_id].children)[0]
+    defunct_sub_tree_root = list(
+        sim_node.dht.nodes[sim_node.own_id].children)[0]
 
     def random_selector(node_id):
         # if node_id == defunct_sub_tree_root:
         # return True
-        
+
         if node_id in sim_node.dht.nodes[defunct_sub_tree_root].children:
             return True
 
@@ -69,6 +63,9 @@ def main():
         return False
 
     sim_node.bind(offline_profile, random_selector)
+
+    # graph_viz = rx.mpl_draw(sim_node.graph)
+    # graph_viz.show()
 
     # TODO: use block.py to simulate block level logic
     block_root = gen_node_id()
@@ -82,7 +79,7 @@ def main():
             continue
 
         filtered_nodes = sim_node.filter_nodes(block_root, sample)
-        
+
         all_nodes = sim_node.dht.sample_mapping[sample]
 
         # just pick the first node from the list
@@ -102,10 +99,9 @@ def main():
     for evicted in evicted_nodes:
         if sim_node.is_ancestor(evicted, defunct_sub_tree_root):
             count += 1
-        else:
-            print(evicted, sim_node.dht.nodes[evicted].parents)
 
-    print(f"{count}/{len(evicted_nodes)} evicted nodes are descendants of the subtree")
+    print(f"{count}/{len(evicted_nodes)
+                     } evicted nodes are descendants of the subtree")
     print(f"the simulator ran for {time.time()-start_time}s")
 
 
