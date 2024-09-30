@@ -67,7 +67,6 @@ def main():
     # graph_viz = rx.mpl_draw(sim_node.graph)
     # graph_viz.show()
 
-    # TODO: use block.py to simulate block level logic
     block_root = gen_node_id()
     evicted_nodes = set()
 
@@ -102,6 +101,8 @@ def main():
 
     # print(f"{count}/{len(evicted_nodes)
     #       } evicted nodes are descendants of the subtree")
+
+    print(f"{len(evicted_nodes)} evicted nodes")
     print(f"the simulator ran for {time.time()-start_time}s")
 
 

@@ -38,9 +38,9 @@ class Node:
 
     def __init__(self, id: NodeId):
         print(" starting a new node in the network")
-        self.own_id         = id
-        self.dht            = RatedListDHT({}, {}, {})
-        self.dht.nodes[id]  = NodeRecord(id, set(), set())
+        self.own_id = id
+        self.dht = RatedListDHT({}, {}, {})
+        self.dht.nodes[id] = NodeRecord(id, set(), set())
 
         print(" started a node in the node with nodeId - %s", id)
 
@@ -102,6 +102,7 @@ class Node:
         score = self.compute_descendant_score(block_root, node_id)
 
         cur_path_scores: Dict[NodeId, float] = {node_id: score}
+        touched_nodes = set()
 
         best_score = 0.0
 
@@ -110,6 +111,7 @@ class Node:
         while cur_path_scores:
             new_path_scores: Dict[NodeId, float] = {}
             for node, score in cur_path_scores.items():
+                touched_nodes.add(node)
                 for parent in self.dht.nodes[node].parents:
                     if parent == self.own_id:
                         best_score = max(best_score, score)
@@ -118,7 +120,7 @@ class Node:
                         if (
                             parent not in new_path_scores
                             or new_path_scores[parent] < par_score
-                        ):
+                        ) and parent not in touched_nodes:
                             new_path_scores[parent] = par_score
 
             cur_path_scores = new_path_scores
@@ -128,17 +130,23 @@ class Node:
     def on_request_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
-        node_record     = self.dht.nodes[node_id]
+        node_record = self.dht.nodes[node_id]
 
         if block_root not in self.dht.scores:
             self.dht.scores[block_root] = ScoreKeeper({}, {})
 
-        score_keeper    = self.dht.scores[block_root]
-        cur_ancestors   = set(node_record.parents)
+        score_keeper = self.dht.scores[block_root]
+        cur_ancestors = set(node_record.parents)
+        touched_nodes = set()
 
         while cur_ancestors:
             new_ancestors = set()
             for ancestor in cur_ancestors:
+                if ancestor in touched_nodes:
+                    continue
+
+                touched_nodes.add(ancestor)
+
                 if ancestor not in score_keeper.descendants_contacted:
                     score_keeper.descendants_contacted[ancestor] = set()
 
@@ -149,13 +157,20 @@ class Node:
     def on_response_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
-        node_record     = self.dht.nodes[node_id]
-        score_keeper    = self.dht.scores[block_root]
-        cur_ancestors   = set(node_record.parents)
+        node_record = self.dht.nodes[node_id]
+        score_keeper = self.dht.scores[block_root]
+        cur_ancestors = set(node_record.parents)
+
+        touched_nodes = set()
 
         while cur_ancestors:
             new_ancestors = set()
             for ancestor in cur_ancestors:
+                if ancestor in touched_nodes:
+                    continue
+
+                touched_nodes.add(ancestor)
+
                 if ancestor not in score_keeper.descendants_replied:
                     score_keeper.descendants_replied[ancestor] = set()
 
@@ -184,9 +199,9 @@ class Node:
             self.dht.sample_mapping[id].remove(node_id)
 
     def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> Set[NodeId]:
-        scores          = {}
-        filter_score    = 0.9
-        filtered_nodes  = set()
+        scores = {}
+        filter_score = 0.9
+        filtered_nodes = set()
 
         for i in range(2):
             evicted_nodes = set()
@@ -204,6 +219,8 @@ class Node:
 
             if len(filtered_nodes) > 0:
                 break
+
+            print("No nodes above threshold using average")
             # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
             filter_score = (
                 sum([score for _, score in scores.items()]) / len(scores) - 0.1

@@ -1,5 +1,6 @@
 import rustworkx as rx
-import random 
+import random
+
 
 class AttackVec:
     def __init__(self, graph: rx.PyGraph):
@@ -10,6 +11,7 @@ class AttackVec:
 
     def is_malicious(self, node_id: int) -> bool:
         raise NotImplementedError("Override and implement")
+
 
 class SybilAttack(AttackVec):
     def __init__(self, graph: rx.PyGraph, sybil_nodes: int):
@@ -26,11 +28,9 @@ class SybilAttack(AttackVec):
             neighbors = random.sample(all_nodes, random.randint(1, 5))
             for neighbor in neighbors:
                 if not self.graph.has_edge(sybil, neighbor):
-                    self.graph.add_edge(sybil, neighbor,None)
-        
-        print(f"Sybil nodes {self.malicious_nodes}")
+                    self.graph.add_edge(sybil, neighbor, None)
+
+        # print(f"Sybil nodes {self.malicious_nodes}")
 
     def is_malicious(self, node_id: int) -> bool:
         return node_id in self.malicious_nodes
-
-    
