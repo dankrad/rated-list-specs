@@ -6,13 +6,9 @@ from eth2spec.utils.ssz.ssz_typing import Bytes32
 from dataclasses import dataclass
 from collections import deque
 import queue
+from attack.attack import SybilAttack
+from nodeprofile import NodeBehaviour
 from enum import Enum
-
-
-class NodeProfile(Enum):
-    HONEST = "honest"
-    OFFLINE = "offline"
-    MALICIOUS = "malicious"
 
 
 @dataclass
@@ -25,17 +21,19 @@ class RequestQueueItem:
 @dataclass
 class NodeAttribute:
     node_id: NodeId
-    node_profile: NodeProfile
+
 
 
 class SimulatedNode(Node):
     def __init__(self, graph: rx.PyGraph, binding_vertex=None):
         super().__init__(gen_node_id())
-        self.graph = graph
-
-        self.request_queue = queue.Queue()
-
-        self.graph_mapping = {}
+        sybil_rate          = 0.5
+        self.graph          = graph
+        self.request_queue  = queue.Queue()
+        self.node_behaviour = NodeBehaviour(graph=graph, attack=SybilAttack(graph=graph,sybil_nodes=int(graph.num_nodes()*sybil_rate)))
+        self.graph_mapping  = {}
+        
+        self.node_behaviour.init_attack()
 
         if binding_vertex is None:
             binding_vertex = rn.choice(self.graph.nodes())
@@ -60,7 +58,7 @@ class SimulatedNode(Node):
                 node_id = gen_node_id()
                 self.graph_mapping[node_id] = vertex_id
                 self.graph[vertex_id] = NodeAttribute(
-                    node_id=node_id, node_profile=NodeProfile.HONEST
+                    node_id=node_id, 
                 )
 
     # NOTE: ideally this function should be defined in the node implementation
@@ -88,23 +86,23 @@ class SimulatedNode(Node):
             self.add_samples_on_entry(self.graph[peer_id].node_id)
         self.on_get_peers_response(node_id, peers)
 
-    def bind(self, profile: NodeProfile, selector):
-        print("Binding profiles to nodes")
-        # TODO: instead of a selector function maybe we can define more parameters
+    # def bind(self, profile: NodeProfile, selector):
+    #     print("Binding profiles to nodes")
+    #     # TODO: instead of a selector function maybe we can define more parameters
 
-        for node in self.graph.nodes():
-            if node.node_id != self.own_id:
-                if selector(node.node_id):
-                    self.graph[self.graph_mapping[node.node_id]].node_profile = profile
+    #     for node in self.graph.nodes():
+    #         if node.node_id != self.own_id:
+    #             if selector(node.node_id):
+    #                 self.graph[self.graph_mapping[node.node_id]].node_profile = profile
 
     def process_requests(self):
         while not self.request_queue.empty():
             request: RequestQueueItem = self.request_queue.get()
-            node_profile: NodeProfile = self.graph[
-                self.graph_mapping[request.node_id]
-            ].node_profile
+            # node_profile: NodeProfile = self.graph[
+            #     self.graph_mapping[request.node_id]
+            # ].node_profile
 
-            if node_profile is NodeProfile.OFFLINE:
+            if not self.node_behaviour.should_respond(self.graph_mapping[request.node_id]):
                 print("Rejected sample request", request)
                 continue
 

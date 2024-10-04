@@ -38,10 +38,9 @@ class Node:
 
     def __init__(self, id: NodeId):
         print(" starting a new node in the network")
-        self.own_id = id
-        self.dht = RatedListDHT({}, {}, {})
-
-        self.dht.nodes[id] = NodeRecord(id, set(), set())
+        self.own_id         = id
+        self.dht            = RatedListDHT({}, {}, {})
+        self.dht.nodes[id]  = NodeRecord(id, set(), set())
 
         print(" started a node in the node with nodeId - %s", id)
 
@@ -129,14 +128,13 @@ class Node:
     def on_request_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
-        node_record = self.dht.nodes[node_id]
+        node_record     = self.dht.nodes[node_id]
 
         if block_root not in self.dht.scores:
             self.dht.scores[block_root] = ScoreKeeper({}, {})
 
-        score_keeper = self.dht.scores[block_root]
-
-        cur_ancestors = set(node_record.parents)
+        score_keeper    = self.dht.scores[block_root]
+        cur_ancestors   = set(node_record.parents)
 
         while cur_ancestors:
             new_ancestors = set()
@@ -151,10 +149,9 @@ class Node:
     def on_response_score_update(
         self, block_root: Root, node_id: NodeId, sample_id: SampleId
     ):
-        node_record = self.dht.nodes[node_id]
-        score_keeper = self.dht.scores[block_root]
-
-        cur_ancestors = set(node_record.parents)
+        node_record     = self.dht.nodes[node_id]
+        score_keeper    = self.dht.scores[block_root]
+        cur_ancestors   = set(node_record.parents)
 
         while cur_ancestors:
             new_ancestors = set()
@@ -187,9 +184,9 @@ class Node:
             self.dht.sample_mapping[id].remove(node_id)
 
     def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> Set[NodeId]:
-        scores = {}
-        filter_score = 0.9
-        filtered_nodes = set()
+        scores          = {}
+        filter_score    = 0.9
+        filtered_nodes  = set()
 
         for i in range(2):
             evicted_nodes = set()
