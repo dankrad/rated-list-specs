@@ -1,7 +1,7 @@
 import rustworkx as rx
-from simulator import SimulatedNode
-from utils import gen_node_id
+from simulator import SimulatedNode, gen_node_id
 import time
+
 
 
 # mimics a rated list tree without any cycles.
@@ -31,6 +31,7 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
     return G
 
 
+
 def main():
     start_time = time.time()
 
@@ -41,32 +42,7 @@ def main():
     # sim_node = SimulatedNode(erdos_renyi_graph)
 
     sim_node.construct_tree()
-
-    # offline_profile = NodeProfile.OFFLINE
-
-    # mark all descendants children of a particular level 1 node offline
-    # defunct_sub_tree_root = list(
-    #     sim_node.dht.nodes[sim_node.own_id].children)[0]
-
-    # def random_selector(node_id):
-    #     # if node_id == defunct_sub_tree_root:
-    #     # return True
-
-    #     if node_id in sim_node.dht.nodes[defunct_sub_tree_root].children:
-    #         return True
-
-    #     # go one more level into the rated list
-    #     for child in sim_node.dht.nodes[defunct_sub_tree_root].children:
-    #         if node_id in sim_node.dht.nodes[child].children:
-    #             return True
-
-    #     return False
-
-    # sim_node.bind(offline_profile, random_selector)
-
-    # graph_viz = rx.mpl_draw(sim_node.graph)
-    # graph_viz.show()
-
+    
     block_root = gen_node_id()
     evicted_nodes = set()
 
@@ -92,15 +68,6 @@ def main():
 
         sim_node.request_sample(node_id, block_root, sample)
         sim_node.process_requests()
-
-    # count = 0
-    # print(sim_node.dht)
-    # for evicted in evicted_nodes:
-    #     if sim_node.is_ancestor(evicted, defunct_sub_tree_root):
-    #         count += 1
-
-    # print(f"{count}/{len(evicted_nodes)
-    #       } evicted nodes are descendants of the subtree")
 
     print(f"{len(evicted_nodes)} evicted nodes")
     print(f"the simulator ran for {time.time()-start_time}s")

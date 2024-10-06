@@ -1,15 +1,27 @@
-from node import Node, MAX_TREE_DEPTH, MAX_CHILDREN
 import rustworkx as rx
 import random as rn
-from utils import NodeId, SampleId, Root, gen_node_id
 from eth2spec.utils.ssz.ssz_typing import Bytes32
 from dataclasses import dataclass
 from collections import deque
+import secrets
 import queue
 from attack.attack import SybilAttack
 from nodeprofile import NodeBehaviour
-from enum import Enum
+from node import (
+    MAX_PARENTS,
+    MAX_CHILDREN,
+    NodeId,
+    SampleId,
+    Root,
+    MAX_TREE_DEPTH,
+    RatedListData,
+    NodeRecord,
+)
+import node
+from typing import Sequence, Set
 
+def gen_node_id():
+        return NodeId(secrets.token_bytes(32))
 
 @dataclass
 class RequestQueueItem:
@@ -23,16 +35,22 @@ class NodeAttribute:
     node_id: NodeId
 
 
-
-class SimulatedNode(Node):
+class SimulatedNode:
     def __init__(self, graph: rx.PyGraph, binding_vertex=None):
-        super().__init__(gen_node_id())
-        sybil_rate          = 0.5
-        self.graph          = graph
-        self.request_queue  = queue.Queue()
-        self.node_behaviour = NodeBehaviour(graph=graph, attack=SybilAttack(graph=graph,sybil_nodes=int(graph.num_nodes()*sybil_rate)))
-        self.graph_mapping  = {}
-        
+        self.dht = RatedListData(gen_node_id(), {}, {}, {})
+        self.dht.nodes[self.dht.own_id] = NodeRecord(id, set(), set())
+
+        sybil_rate = 0.5
+        self.graph = graph
+        self.request_queue = queue.Queue()
+        self.node_behaviour = NodeBehaviour(
+            graph=graph,
+            attack=SybilAttack(
+                graph=graph, sybil_nodes=int(graph.num_nodes() * sybil_rate)
+            ),
+        )
+        self.graph_mapping = {}
+
         self.node_behaviour.init_attack()
 
         if binding_vertex is None:
@@ -45,23 +63,55 @@ class SimulatedNode(Node):
 
         print("Average Degree:", sum / len(self.graph.nodes()))
         print(
-            "mapping " + str(self.own_id) + " to graph vertice " + str(binding_vertex)
+            "mapping "
+            + str(self.dht.own_id)
+            + " to graph vertice "
+            + str(binding_vertex)
         )
 
         # assign the node's id to the binding vertex
         # self.graph_mapping[binding_vertex] = self.own_id
-        self.graph_mapping[self.own_id] = binding_vertex
+        self.graph_mapping[self.dht.own_id] = binding_vertex
 
         # assign a node id for every vertex in the graph
         for vertex_id in self.graph.node_indices():
-            if vertex_id != self.own_id:
+            if vertex_id != self.dht.own_id:
                 node_id = gen_node_id()
                 self.graph_mapping[node_id] = vertex_id
                 self.graph[vertex_id] = NodeAttribute(
-                    node_id=node_id, 
+                    node_id=node_id,
                 )
+    
+    
 
-    # NOTE: ideally this function should be defined in the node implementation
+    def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
+        return node.compute_descendant_score(self.dht, block_root, node_id)
+
+    def compute_node_score(self, block_root: Root, node_id: NodeId) -> float:
+        return node.compute_node_score(self.dht, block_root, node_id)
+
+    def on_get_peers_response(self, node_id: NodeId, peers: Sequence[NodeId]):
+        node.on_get_peers_response(self.dht, node_id, peers)
+
+    def on_request_score_update(
+        self, block_root: Root, node_id: NodeId, sample_id: SampleId
+    ):
+        node.on_request_score_update(self.dht, block_root, node_id, sample_id)
+
+    def on_response_score_update(
+        self, block_root: Root, node_id: NodeId, sample_id: SampleId
+    ):
+        node.on_response_score_update(self.dht, block_root, node_id, sample_id)
+
+    def add_samples_on_entry(self, node_id: NodeId):
+        node.add_samples_on_entry(self.dht, node_id)
+
+    def remove_samples_on_exit(self, node_id: NodeId):
+        node.remove_samples_on_exit(self.dht, node_id)
+
+    def filter_nodes(self, block_root: Bytes32, sample_id: SampleId) -> Set[NodeId]:
+        return node.filter_nodes(self.dht, block_root, sample_id)
+
     def request_sample(self, node_id: NodeId, block_root: Root, sample: SampleId):
         print("Requesting samples from", node_id)
 
@@ -70,7 +120,6 @@ class SimulatedNode(Node):
             RequestQueueItem(node_id=node_id, sample_id=sample, block_root=block_root)
         )
 
-    # NOTE: ideally this function should be defined in the node implementation
     def get_peers(self, node_id: NodeId):
         peers = []
 
@@ -102,7 +151,9 @@ class SimulatedNode(Node):
             #     self.graph_mapping[request.node_id]
             # ].node_profile
 
-            if not self.node_behaviour.should_respond(self.graph_mapping[request.node_id]):
+            if not self.node_behaviour.should_respond(
+                self.graph_mapping[request.node_id]
+            ):
                 print("Rejected sample request", request)
                 continue
 
@@ -116,7 +167,7 @@ class SimulatedNode(Node):
         print("constructing the rated list tree from the graph")
 
         # iterative BFS approach to find peers where max_tree_depth is parametrised
-        queue = deque([(self.own_id, 1)])
+        queue = deque([(self.dht.own_id, 1)])
 
         while queue:
             current_node_id, current_level = queue.popleft()
@@ -133,7 +184,7 @@ class SimulatedNode(Node):
 
     def is_ancestor(self, grand_child: NodeId, check_ancestor: NodeId) -> bool:
         # all nodes are children(grand or great grand until tree depth) of root node
-        if check_ancestor == self.own_id:
+        if check_ancestor == self.dht.own_id:
             return True
 
         if check_ancestor == grand_child:
@@ -148,7 +199,7 @@ class SimulatedNode(Node):
                 return True
 
             # if our assumption is wrong the parents will be the root node itself
-            if parent == self.own_id:
+            if parent == self.dht.own_id:
                 return False
 
         return False
