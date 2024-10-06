@@ -1,9 +1,9 @@
 import rustworkx as rx
 import random as rn
-from utils import gen_node_id
 from eth2spec.utils.ssz.ssz_typing import Bytes32
 from dataclasses import dataclass
 from collections import deque
+import secrets
 import queue
 from attack.attack import SybilAttack
 from nodeprofile import NodeBehaviour
@@ -20,6 +20,8 @@ from node import (
 import node
 from typing import Sequence, Set
 
+def gen_node_id():
+        return NodeId(secrets.token_bytes(32))
 
 @dataclass
 class RequestQueueItem:
@@ -79,6 +81,8 @@ class SimulatedNode:
                 self.graph[vertex_id] = NodeAttribute(
                     node_id=node_id,
                 )
+    
+    
 
     def compute_descendant_score(self, block_root: Root, node_id: NodeId) -> float:
         return node.compute_descendant_score(self.dht, block_root, node_id)
