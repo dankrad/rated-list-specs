@@ -1,13 +1,9 @@
 from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64, uint
 from eth2spec.utils.ssz.ssz_impl import serialize
+from node import NodeId
 from hashlib import sha256
 import secrets
 
-NodeId = Bytes32
-SampleId = uint64
-Root = Bytes32
-
-MAX_PEERS = 3
 ENDIANNESS = "little"
 
 
