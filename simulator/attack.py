@@ -8,9 +8,10 @@ class NodeBehaviour:
 
 
 class AttackVec(NodeBehaviour):
-    def __init__(self, graph: rx.PyGraph):
+    def __init__(self, graph: rx.PyGraph, num_attack_nodes: int = 0):
         super().__init__()
         self.graph = graph
+        self.num_attack_nodes = num_attack_nodes
 
     def setup_attack(self):
         raise NotImplementedError("Override and implement")
@@ -19,12 +20,12 @@ class AttackVec(NodeBehaviour):
 class SybilAttack(AttackVec):
     def __init__(self, graph: rx.PyGraph, sybil_rate: float):
         super().__init__(graph)
-        self.num_sybil_nodes = int(graph.num_nodes() * sybil_rate)
+        self.num_attack_nodes = int(graph.num_nodes() * sybil_rate)
         self.malicious_nodes = set()
 
     def setup_attack(self):
         all_nodes = list(self.graph.nodes())
-        sybil_nodes = random.sample(all_nodes, self.num_sybil_nodes)
+        sybil_nodes = random.sample(all_nodes, self.num_attack_nodes)
         self.malicious_nodes.update(sybil_nodes)
 
         # we go an extra step to create random connections with more peers
