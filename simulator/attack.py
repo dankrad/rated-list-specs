@@ -1,5 +1,7 @@
 import rustworkx as rx
 import random
+from node import NodeId
+from utils import bytes_to_int
 
 
 class NodeBehaviour:
@@ -37,6 +39,27 @@ class SybilAttack(AttackVec):
                     self.graph.add_edge(sybil, neighbor, None)
 
         # print(f"Sybil nodes {self.malicious_nodes}")
+
+    def should_respond(self, node_vertice: int) -> bool:
+        return node_vertice in self.malicious_nodes
+
+
+class AcyclicTestAttack(AttackVec):
+    def __init__(self, graph: rx.PyGraph, defunct_sub_root: int, parent_sub_root: int):
+        super().__init__(graph)
+        self.parent_sub_root = parent_sub_root
+        self.defunct_sub_root = defunct_sub_root
+        self.malicious_nodes = set()
+
+    def recursively_add_children(self, parent, node):
+        for peer in self.graph.neighbors(node):
+            if peer != parent:
+                self.malicious_nodes.add(peer)
+                self.recursively_add_children(node, peer)
+
+    def setup_attack(self):
+        self.recursively_add_children(self.parent_sub_root, self.defunct_sub_root)
+        self.num_attack_nodes = len(self.malicious_nodes)
 
     def should_respond(self, node_vertice: int) -> bool:
         return node_vertice in self.malicious_nodes

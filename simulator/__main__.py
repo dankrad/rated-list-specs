@@ -1,10 +1,11 @@
 import rustworkx as rx
+import random
 import time
 
 from utils import int_to_bytes
 from simulator import SimulatedNode
 from node import Root
-from attack import SybilAttack
+from attack import SybilAttack, AcyclicTestAttack
 
 
 # mimics a rated list tree without any cycles.
@@ -37,14 +38,19 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
 def main():
     start_time = time.time()
 
-    # acyclic_graph = construct_acyclic_graph(50)
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
+    acyclic_graph = construct_acyclic_graph(50)
+    # erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
 
-    # acyclic_test_attack = AcyclicAttack(graph=graph, defunct_sub_root=None)
-    sybil_attack = SybilAttack(graph=erdos_renyi_graph, sybil_rate=0.5)
+    acyclic_test_attack = AcyclicTestAttack(
+        graph=acyclic_graph, defunct_sub_root=1, parent_sub_root=0
+    )
+    print(f"total num nodes: {acyclic_graph.num_nodes()}")
+    # sybil_attack = SybilAttack(graph=erdos_renyi_graph, sybil_rate=0.5)
 
-    # sim_node = SimulatedNode(graph=acyclic_graph, attack=acyclic_test_attack, binding_vertex=0)
-    sim_node = SimulatedNode(graph=erdos_renyi_graph, attack=sybil_attack)
+    sim_node = SimulatedNode(
+        graph=acyclic_graph, attack=acyclic_test_attack, binding_vertex=0
+    )
+    # sim_node = SimulatedNode(graph=erdos_renyi_graph, attack=sybil_attack)
 
     block_root = Root(int_to_bytes(0))
 

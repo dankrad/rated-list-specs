@@ -176,7 +176,7 @@ class SimulatedNode:
         # nodes that were honest but were evicted
         false_positives = set()
         for node in evicted_nodes:
-            if not self.attack.should_respond(bytes_to_int(node)):
+            if self.attack.should_respond(bytes_to_int(node)):
                 false_positives.add(node)
 
         print(f"{len(false_positives)} false positives")
@@ -191,11 +191,11 @@ class SimulatedNode:
         print(f"{negatives} non evicted nodes")
 
         # attack nodes that weren't evicted
-        false_negatives = negatives - (
+        true_negatives = negatives - (
             self.attack.num_attack_nodes - len(true_positives)
         )
-        print(f"{false_negatives} false negatives")
+        print(f"{true_negatives} true negatives")
 
         # honest nodes that weren't evicted
-        true_negatives = negatives - false_negatives
-        print(f"{true_negatives} true negatives")
+        false_negatives = negatives - true_negatives
+        print(f"{false_negatives} false negatives")
