@@ -1,7 +1,5 @@
 import rustworkx as rx
 import random
-from node import NodeId
-from utils import bytes_to_int
 
 
 class NodeBehaviour:
