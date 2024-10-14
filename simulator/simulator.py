@@ -46,8 +46,10 @@ class SimulatedNode:
         if binding_vertex is None:
             binding_vertex = rn.choice(self.graph.node_indices())
 
-        self.dht = RatedListData(NodeId(int_to_bytes(binding_vertex)), {}, {}, {})
-        self.dht.nodes[self.dht.own_id] = NodeRecord(self.dht.own_id, set(), set())
+        self.dht = RatedListData(
+            NodeId(int_to_bytes(binding_vertex)), {}, {}, {})
+        self.dht.nodes[self.dht.own_id] = NodeRecord(
+            self.dht.own_id, set(), set())
 
         print("mapped rated list node to graph vertice " + str(binding_vertex))
 
@@ -67,7 +69,8 @@ class SimulatedNode:
 
         rl_node.on_request_score_update(self.dht, block_root, node_id, sample)
         self.request_queue.put(
-            RequestQueueItem(node_id=node_id, sample_id=sample, block_root=block_root)
+            RequestQueueItem(node_id=node_id, sample_id=sample,
+                             block_root=block_root)
         )
 
     def get_peers(self, node_id: NodeId):
@@ -191,7 +194,7 @@ class SimulatedNode:
         print(f"{negatives} non evicted nodes")
 
         # attack nodes that weren't evicted
-        true_negatives = negatives - (
+        true_negatives = negatives - abs(
             self.attack.num_attack_nodes - len(true_positives)
         )
         print(f"{true_negatives} true negatives")
