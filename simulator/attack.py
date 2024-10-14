@@ -1,4 +1,5 @@
 import rustworkx as rx
+from node import MAX_TREE_DEPTH
 import random
 
 
@@ -14,6 +15,9 @@ class AttackVec(NodeBehaviour):
         self.num_attack_nodes = num_attack_nodes
 
     def setup_attack(self):
+        raise NotImplementedError("Override and implement")
+
+    def get_malicious_nodes(self):
         raise NotImplementedError("Override and implement")
 
 
@@ -41,19 +45,16 @@ class SybilAttack(AttackVec):
     def should_respond(self, node_vertice: int) -> bool:
         return node_vertice in self.malicious_nodes
 
+    def get_malicious_nodes(self):
+        return self.malicious_nodes
 
-# There are various interpretations of an eclipse attack.
-# 1. The attack can be directly on the rated list node. This would hardly provide any
-#    benefit since the node
-# 2. The attack can be on a node in the network to bring down it's score or partition
-#    it's view of the network
-# 3. The attack can be made on another malicious node to bring down it's score
-#    and therefore lessen the obligation of serving samples.
+
 class EclipseAttack(AttackVec):
     def __init__(self, graph: rx.PyGraph, compromised_node: int, eclipse_rate: int):
         super().__init__(graph)
         self.malicious_nodes = set()
         self.compromised_node = compromised_node
+        # TODO: Use the rate to measure the amount of nodes required to eclipse a node
         self.eclipse_rate = eclipse_rate
 
     def setup_attack(self):
@@ -63,12 +64,14 @@ class EclipseAttack(AttackVec):
     def should_respond(self, node_vertice: int) -> bool:
         return node_vertice in self.malicious_nodes
 
+    def get_malicious_nodes(self):
+        return self.malicious_nodes
+
 
 class BalancingAttack(AttackVec):
     """
-    here we are trying to make a small subset of nodes at each malicious in intend to bring down
-    the average confidence score that increase the chance of picking malicious subtree in other
-    branches of the graph
+    We try to favor a set of nodes/subtree over others by posioning other subtrees
+    with malicious nodes and bringing their score down
     """
 
     def __init__(self, graph: rx.PyGraph, root_node: int):
@@ -77,7 +80,7 @@ class BalancingAttack(AttackVec):
         self.malicious_nodes = set()
 
     def recursively_add_children(self, parent, node, factor, depth=0):
-        if depth == 3:
+        if depth == MAX_TREE_DEPTH:
             return
         depth += 1
         neighbours = self.graph.neighbors(node)
@@ -101,19 +104,25 @@ class BalancingAttack(AttackVec):
     def should_respond(self, node_vertice: int) -> bool:
         return node_vertice in self.malicious_nodes
 
+    def get_malicious_nodes(self):
+        return self.malicious_nodes
 
-class AcyclicTestAttack(AttackVec):
+
+class DefunctSubTreeAttack(AttackVec):
     def __init__(self, graph: rx.PyGraph, defunct_sub_root: int, parent_sub_root: int):
         super().__init__(graph)
         self.parent_sub_root = parent_sub_root
         self.defunct_sub_root = defunct_sub_root
         self.malicious_nodes = set()
 
-    def recursively_add_children(self, parent, node):
+    def recursively_add_children(self, parent, node, depth=0):
+        if depth == MAX_TREE_DEPTH:
+            return
+        depth += 1
         for peer in self.graph.neighbors(node):
             if peer != parent:
                 self.malicious_nodes.add(peer)
-                self.recursively_add_children(node, peer)
+                self.recursively_add_children(node, peer, depth)
 
     def setup_attack(self):
         self.recursively_add_children(
@@ -122,3 +131,6 @@ class AcyclicTestAttack(AttackVec):
 
     def should_respond(self, node_vertice: int) -> bool:
         return node_vertice in self.malicious_nodes
+
+    def get_malicious_nodes(self):
+        return self.malicious_nodes

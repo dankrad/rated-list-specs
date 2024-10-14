@@ -28,9 +28,18 @@ class RequestQueueItem:
 
 
 class SimulatedNode:
+    def print_debug(self, *args):
+        if self.debug:
+            print(args)
+
     def __init__(
-        self, graph: rx.PyGraph, attack: AttackVec, binding_vertex: int = None
+        self,
+        graph: rx.PyGraph,
+        attack: AttackVec,
+        binding_vertex: int = None,
+        debug: bool = False,
     ):
+        self.debug = debug
         self.graph = graph
         self.request_queue = queue.Queue()
         self.attack = attack
@@ -40,7 +49,7 @@ class SimulatedNode:
         for node in self.graph.nodes():
             sum = sum + self.graph.degree(self.graph[node])
 
-        print("Average Degree:", sum / len(self.graph.nodes()))
+        self.print_debug("Average Degree:", sum / len(self.graph.nodes()))
 
         # map rated list node to one of the graph vertices
         if binding_vertex is None:
@@ -51,21 +60,20 @@ class SimulatedNode:
         self.dht.nodes[self.dht.own_id] = NodeRecord(
             self.dht.own_id, set(), set())
 
-        print("mapped rated list node to graph vertice " + str(binding_vertex))
+        self.print_debug(
+            "mapped rated list node to graph vertice " + str(binding_vertex)
+        )
 
         self._construct_tree()
 
-        print("constructed the rated list")
+        self.print_debug("constructed the rated list")
 
         self.attack.setup_attack()
 
-        print("initialized the attack vector")
-
-    def filter_nodes(self, block_root: Root, sample: SampleId):
-        return rl_node.filter_nodes(self.dht, block_root, sample)
+        self.print_debug("initialized the attack vector")
 
     def request_sample(self, node_id: NodeId, block_root: Root, sample: SampleId):
-        print("Requesting samples from", node_id)
+        self.print_debug("Requesting samples from", node_id)
 
         rl_node.on_request_score_update(self.dht, block_root, node_id, sample)
         self.request_queue.put(
@@ -94,7 +102,7 @@ class SimulatedNode:
             request: RequestQueueItem = self.request_queue.get()
 
             if not self.attack.should_respond(bytes_to_int(request.node_id)):
-                print("Rejected sample request", request)
+                self.print_debug("Rejected sample request", request)
                 continue
 
             rl_node.on_response_score_update(
@@ -105,7 +113,7 @@ class SimulatedNode:
             )
 
     def _construct_tree(self):
-        print("constructing the rated list tree from the graph")
+        self.print_debug("constructing the rated list tree from the graph")
 
         # iterative BFS approach to find peers
         # where max_tree_depth is parametrised
@@ -155,7 +163,8 @@ class SimulatedNode:
             # NOTE: technically all samples must be in the mapping.
             # we just need enough nodes in the network
             if sample not in self.dht.sample_mapping:
-                print("No record of nodes that serve sample: " + str(sample))
+                self.print_debug(
+                    "No record of nodes that serve sample: " + str(sample))
                 continue
 
             filtered_nodes = rl_node.filter_nodes(self.dht, block_root, sample)
@@ -168,13 +177,11 @@ class SimulatedNode:
                 evicted_nodes.update(all_nodes - filtered_nodes)
                 node_id = filtered_nodes.pop()
             else:
-                print("No good nodes found for sample")
+                self.print_debug("No good nodes found for sample")
                 continue
 
             self.request_sample(node_id, block_root, sample)
             self.process_requests()
-
-        print(f"{len(evicted_nodes)} evicted nodes")
 
         # nodes that were honest but were evicted
         false_positives = set()
@@ -182,23 +189,25 @@ class SimulatedNode:
             if self.attack.should_respond(bytes_to_int(node)):
                 false_positives.add(node)
 
-        print(f"{len(false_positives)} false positives")
-
         # nodes that were attack nodes and were evicted
         true_positives = evicted_nodes - false_positives
 
-        print(f"{len(true_positives)} true positives")
+        print(
+            f"{len(evicted_nodes)} evicted nodes, {len(false_positives)
+                                                   } false positives, {len(true_positives)} true positives"
+        )
 
         # nodes that weren't evicted
         negatives = self.graph.num_nodes() - len(evicted_nodes)
-        print(f"{negatives} non evicted nodes")
 
         # attack nodes that weren't evicted
         true_negatives = negatives - abs(
             self.attack.num_attack_nodes - len(true_positives)
         )
-        print(f"{true_negatives} true negatives")
 
         # honest nodes that weren't evicted
         false_negatives = negatives - true_negatives
-        print(f"{false_negatives} false negatives")
+        print(
+            f"{negatives} non evicted nodes, {true_negatives} true negatives, {
+                false_negatives} false negatives"
+        )

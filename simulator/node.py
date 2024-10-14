@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from utils import bytes_to_uint64, uint_to_bytes, hash, ENDIANNESS
 
 
+
 MAX_TREE_DEPTH = 3
 MAX_CHILDREN = 100
 MAX_PARENTS = 100
@@ -219,7 +220,6 @@ def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id:
         if len(filtered_nodes) > 0:
             break
 
-        print("No nodes above threshold using average")
         # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
         filter_score = (
             sum([score for _, score in scores.items()]) / len(scores) - 0.1
@@ -255,5 +255,4 @@ def get_custody_columns(
             for subnet_id in subnet_ids
         ]
     )
-
 
