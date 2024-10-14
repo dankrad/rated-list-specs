@@ -89,8 +89,8 @@ class SimulatedNode:
         rn.shuffle(random_neighbors)
 
         for i, peer_id in enumerate(random_neighbors):
-            if i >= MAX_CHILDREN:
-                break
+            # if i >= MAX_CHILDREN:
+            #     break
 
             peer_id_bytes = NodeId(int_to_bytes(peer_id))
             peers.append(peer_id_bytes)
@@ -185,12 +185,16 @@ class SimulatedNode:
 
         # nodes that were honest but were evicted
         false_positives = set()
+        malicious_nodes = self.attack.get_malicious_nodes()
         for node in evicted_nodes:
-            if self.attack.should_respond(bytes_to_int(node)):
+            if bytes_to_int(node) not in malicious_nodes:
                 false_positives.add(node)
 
         # nodes that were attack nodes and were evicted
-        true_positives = evicted_nodes - false_positives
+        true_positives = set()
+        for node in evicted_nodes:
+            if bytes_to_int(node) in malicious_nodes:
+                true_positives.add(node)
 
         print(
             f"{len(evicted_nodes)} evicted nodes, {len(false_positives)
@@ -201,7 +205,7 @@ class SimulatedNode:
         negatives = self.graph.num_nodes() - len(evicted_nodes)
 
         # attack nodes that weren't evicted
-        true_negatives = negatives - abs(
+        true_negatives = negatives - (
             self.attack.num_attack_nodes - len(true_positives)
         )
 
