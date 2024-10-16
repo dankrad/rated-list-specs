@@ -269,7 +269,7 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 ### `filter_nodes`
 
 ```python
-def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> Set[NodeId]:
+def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> Set[Tuple[NodeId, float]]:
     scores = {}
     filter_score = 0.9
     filtered_nodes = set()
@@ -282,7 +282,7 @@ def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id:
                 scores[node_id] = score
 
             if scores[node_id] >= filter_score and node_id not in evicted_nodes:
-                filtered_nodes.add(node_id)
+                filtered_nodes.add((node_id, scores[node_id]))
             else:
                 # print(f"Removed: {node_id} with score {scores[node_id]}")
                 evicted_nodes.add(node_id)

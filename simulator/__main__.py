@@ -7,6 +7,9 @@ from simulator import SimulatedNode
 from node import Root, NodeId, compute_node_score
 from attack import SybilAttack, DefunctSubTreeAttack, BalancingAttack, EclipseAttack
 
+# TODO: change this to not be a global variable
+querying_strategy = "all"
+
 
 # mimics a rated list tree without any cycles.
 def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
@@ -53,7 +56,9 @@ def acyclic_graph_defunct_subtree_test():
     block_root = Root(int_to_bytes(0))
 
     # query for samples and get a report out
-    report = sim_node.query_samples(block_root)
+    report = sim_node.query_samples(block_root, querying_strategy)
+
+    sim_node.print_report(report)
 
 
 def random_graph_defunct_subtree_test():
@@ -79,7 +84,9 @@ def random_graph_defunct_subtree_test():
     block_root = Root(int_to_bytes(0))
 
     # query for samples and get a report out
-    report = sim_node.query_samples(block_root)
+    report = sim_node.query_samples(block_root, querying_strategy)
+
+    sim_node.print_report(report)
 
 
 def sybil_poisoning_test(rate: int):
@@ -92,7 +99,9 @@ def sybil_poisoning_test(rate: int):
 
     block_root = Root(int_to_bytes(0))
 
-    report = sim_node.query_samples(block_root)
+    report = sim_node.query_samples(block_root, querying_strategy)
+
+    sim_node.print_report(report)
 
 
 # There are various interpretations of an eclipse attack.
@@ -122,7 +131,9 @@ def eclipse_attack_test(rate):
 
     block_root = Root(int_to_bytes(0))
 
-    report = sim_node.query_samples(block_root)
+    report = sim_node.query_samples(block_root, querying_strategy)
+
+    sim_node.print_report(report)
 
     eclipse_score = compute_node_score(
         sim_node.dht, block_root, NodeId(int_to_bytes(rnd_node))
@@ -147,7 +158,9 @@ def balancing_attack():
 
     block_root = Root(int_to_bytes(0))
 
-    report = sim_node.query_samples(block_root)
+    report = sim_node.query_samples(block_root, querying_strategy)
+
+    sim_node.print_report(report)
 
 
 def main():

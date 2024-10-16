@@ -3,6 +3,7 @@ import random as rn
 import queue
 from dataclasses import dataclass
 from collections import deque
+from typing import Tuple, List
 
 # Project specific
 from attack import AttackVec
@@ -97,12 +98,15 @@ class SimulatedNode:
             rl_node.add_samples_on_entry(self.dht, peer_id_bytes)
         rl_node.on_get_peers_response(self.dht, node_id, peers)
 
-    def process_requests(self):
+    def process_requests(self) -> List[Tuple[RequestQueueItem, bool]]:
+        request_status = []
+
         while not self.request_queue.empty():
             request: RequestQueueItem = self.request_queue.get()
 
             if not self.attack.should_respond(bytes_to_int(request.node_id)):
                 self.print_debug("Rejected sample request", request)
+                request_status.append((request, False))
                 continue
 
             rl_node.on_response_score_update(
@@ -111,6 +115,9 @@ class SimulatedNode:
                 node_id=request.node_id,
                 sample_id=request.sample_id,
             )
+            request_status.append((request, True))
+
+        return request_status
 
     def _construct_tree(self):
         self.print_debug("constructing the rated list tree from the graph")
@@ -156,8 +163,11 @@ class SimulatedNode:
 
         return False
 
-    def query_samples(self, block_root: Root):
+    def query_samples(self, block_root: Root, querying_strategy):
         evicted_nodes = set()
+        sampling_result = {"evicted": set(), "filtered": set(),
+                           "malicious": set()}
+
         # using a random block root just for initial testing
         for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
             # NOTE: technically all samples must be in the mapping.
@@ -169,49 +179,118 @@ class SimulatedNode:
 
             filtered_nodes = rl_node.filter_nodes(self.dht, block_root, sample)
 
+            # calculate the set of evicted nodes a.k.a nodes not filtered
             all_nodes = self.dht.sample_mapping[sample]
-
-            # just pick the first node from the list
-            # TODO: come up with different startegies for this
+            filtered_set = set([node for node, _ in filtered_nodes])
             if len(filtered_nodes) > 0:
-                evicted_nodes.update(all_nodes - filtered_nodes)
-                node_id = filtered_nodes.pop()
+                sampling_result["evicted"].update(all_nodes - filtered_set)
+                sampling_result["filtered"].update(filtered_set)
             else:
                 self.print_debug("No good nodes found for sample")
                 continue
 
-            self.request_sample(node_id, block_root, sample)
-            self.process_requests()
+            if querying_strategy == "all":
+                for node, _ in filtered_nodes:
+                    self.request_sample(node, block_root, sample)
 
-        # nodes that were honest but were evicted
-        false_positives = set()
+                result = self.process_requests()
+
+                for response in result:
+                    if (
+                        response[0].node_id in filtered_nodes
+                        and response[0].sample_id == sample
+                        and response[0].block_root == block_root
+                        and response[1]
+                    ):
+                        sampling_result[sample] = True
+            else:
+                if querying_strategy == "high":
+                    # sort the list in descending order
+                    filtered_nodes.sort(key=lambda a: a[1], reverse=True)
+                elif querying_strategy == "low":
+                    # sort the list in ascending order
+                    filtered_nodes.sort(key=lambda a: a[1], reverse=False)
+                else:
+                    filtered_nodes = rn.shuffle(filtered_nodes)
+
+                for node, _ in filtered_nodes:
+                    self.request_sample(node, block_root, sample)
+
+                    # since we make only request the result would contain only one item
+                    result = self.process_requests()[0]
+
+                    # if the request was successful break out of the loop
+                    if (
+                        result[0].node_id == node
+                        and result[0].sample_id == sample
+                        and result[0].block_root == block_root
+                        and result[1]
+                    ):
+                        sampling_result[sample] = True
+                        break
+
+                if sample not in sampling_result:
+                    sampling_result[sample] = False
+
+        sampling_result["evicted"] = evicted_nodes
+
         malicious_nodes = self.attack.get_malicious_nodes()
-        for node in evicted_nodes:
-            if bytes_to_int(node) not in malicious_nodes:
+        sampling_result["malicious"] = [
+            int_to_bytes(id) for id in malicious_nodes]
+
+        return sampling_result
+
+    def print_report(self, report):
+        # Positive Outcome of rated list:
+        #     to evict malicious nodes
+        # False Positive: evicting honest nodes
+        # True Positive: evicting malicious nodes
+        # False Negative: NOT evicting malicious nodes
+        # True Negative: NOT evicting honest nodes
+
+        false_positives = set()
+        for node in report["evicted"]:
+            if node not in report["malicious"]:
                 false_positives.add(node)
 
-        # nodes that were attack nodes and were evicted
         true_positives = set()
-        for node in evicted_nodes:
-            if bytes_to_int(node) in malicious_nodes:
+        for node in report["evicted"]:
+            if node in report["malicious"]:
                 true_positives.add(node)
 
+        true_negatives = set()
+        for node in report["filtered"]:
+            if node not in report["malicious"]:
+                true_negatives.add(node)
+
+        false_negatives = set()
+        for node in report["filtered"]:
+            if node in report["malicious"]:
+                false_negatives.add(node)
+
+        if (len(true_positives) + len(false_negatives)) != len(report["malicious"]):
+            raise Exception(
+                f"number of malicious nodes doesn't match TP + FN, {
+                    len(true_positives)} + {len(false_negatives)} != {len(report["malicious"])}"
+            )
+
+        if (len(false_positives) + len(true_negatives)) != (
+            self.graph.num_nodes() - len(report["filtered"])
+        ):
+            raise Exception("number of honest nodes doesn't match TN + FP")
+
         print(
-            f"{len(evicted_nodes)} evicted nodes, {len(false_positives)
-                                                   } false positives, {len(true_positives)} true positives"
+            f"False Positive Rate: {
+                len(false_positives)/(len(false_positives) + len(true_negatives))}"
         )
-
-        # nodes that weren't evicted
-        negatives = self.graph.num_nodes() - len(evicted_nodes)
-
-        # attack nodes that weren't evicted
-        true_negatives = negatives - (
-            self.attack.num_attack_nodes - len(true_positives)
-        )
-
-        # honest nodes that weren't evicted
-        false_negatives = negatives - true_negatives
         print(
-            f"{negatives} non evicted nodes, {true_negatives} true negatives, {
-                false_negatives} false negatives"
+            f"False Negative Rate: {
+                len(false_negatives)/(len(false_negatives) + len(true_positives))}"
         )
+
+        count = 0
+        for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
+            if report[sample]:
+                count += 1
+
+        print(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
