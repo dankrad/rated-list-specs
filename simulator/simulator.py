@@ -273,6 +273,12 @@ class SimulatedNode:
             if node in report["malicious"]:
                 false_negatives.add(node)
 
+        if (
+            self.dht.own_id not in report["evicted"]
+            or self.dht.own_id not in report["filtered"]
+        ):
+            report["filtered"].add(self.dht.own_id)
+
         if (len(true_positives) + len(false_negatives)) != len(report["malicious"]):
             print(f"number of malicious nodes doesn't match TP + FN")
             # raise Exception("number of malicious nodes doesn't match TP + FN")
