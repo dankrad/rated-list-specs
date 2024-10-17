@@ -118,9 +118,10 @@ def compute_node_score(rated_list_data: RatedListData,
 
     best_score = 0.0
 
+    depth = 1
     # traverse all paths of node_id by iterating through its parents and
     # grand parents. Note the best score when the iteration reaches root
-    while cur_path_scores:
+    while cur_path_scores and depth <= MAX_TREE_DEPTH:
         new_path_scores: Dict[NodeId, float] = {}
         for node, score in cur_path_scores.items():
             touched_nodes.add(node)
@@ -134,7 +135,7 @@ def compute_node_score(rated_list_data: RatedListData,
                         or new_path_scores[parent] < par_score
                     ) and parent not in touched_nodes:
                         new_path_scores[parent] = par_score
-
+        depth += 1
         cur_path_scores = new_path_scores
 
     return best_score
@@ -164,14 +165,18 @@ def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers
         rated_list_data.nodes[peer_id].parents.add(node_id)
         rated_list_data.nodes[node_id].children.add(peer_id)
 
+    remove_children = []
     for child_id in rated_list_data.nodes[node_id].children:
         if child_id not in peers:
             # Node no longer has child peer, remove link
-            rated_list_data.nodes[node_id].children.remove(child_id)
-            rated_list_data.nodes[child_id].parents.remove(node_id)
+            remove_children.append(child_id)
 
-            if len(rated_list_data.nodes[child_id].parents) == 0:
-                rated_list_data.nodes.remove(child_id)
+    for child_id in remove_children:
+        rated_list_data.nodes[node_id].children.remove(child_id)
+        rated_list_data.nodes[child_id].parents.remove(node_id)
+
+        if len(rated_list_data.nodes[child_id].parents) == 0:
+            del rated_list_data.nodes[child_id]
 ```
 
 ### `on_request_score_update`

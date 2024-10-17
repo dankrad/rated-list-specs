@@ -124,7 +124,7 @@ class SimulatedNode:
 
         # iterative BFS approach to find peers
         # where max_tree_depth is parametrised
-        queue = deque([(self.dht.own_id, 1)])
+        queue = deque([(self.dht.own_id, 0)])
 
         while queue:
             current_node_id, current_level = queue.popleft()
@@ -164,7 +164,6 @@ class SimulatedNode:
         return False
 
     def query_samples(self, block_root: Root, querying_strategy):
-        evicted_nodes = set()
         sampling_result = {"evicted": set(), "filtered": set(),
                            "malicious": set()}
 
@@ -182,12 +181,12 @@ class SimulatedNode:
             # calculate the set of evicted nodes a.k.a nodes not filtered
             all_nodes = self.dht.sample_mapping[sample]
             filtered_set = set([node for node, _ in filtered_nodes])
-            if len(filtered_nodes) > 0:
-                sampling_result["evicted"].update(all_nodes - filtered_set)
-                sampling_result["filtered"].update(filtered_set)
-            else:
-                self.print_debug("No good nodes found for sample")
-                continue
+
+            sampling_result["filtered"].update(filtered_set)
+            sampling_result["evicted"].update(all_nodes - filtered_set)
+
+            # remove nodes that were filtered before but were evicted later
+            sampling_result["filtered"] -= sampling_result["evicted"]
 
             if querying_strategy == "all":
                 for node, _ in filtered_nodes:
@@ -206,10 +205,10 @@ class SimulatedNode:
             else:
                 if querying_strategy == "high":
                     # sort the list in descending order
-                    filtered_nodes.sort(key=lambda a: a[1], reverse=True)
+                    sorted(filtered_nodes, key=lambda a: a[1], reverse=True)
                 elif querying_strategy == "low":
                     # sort the list in ascending order
-                    filtered_nodes.sort(key=lambda a: a[1], reverse=False)
+                    sorted(filtered_nodes, key=lambda a: a[1], reverse=False)
                 else:
                     filtered_nodes = rn.shuffle(filtered_nodes)
 
@@ -229,14 +228,13 @@ class SimulatedNode:
                         sampling_result[sample] = True
                         break
 
-                if sample not in sampling_result:
-                    sampling_result[sample] = False
-
-        sampling_result["evicted"] = evicted_nodes
+            if sample not in sampling_result:
+                sampling_result[sample] = False
 
         malicious_nodes = self.attack.get_malicious_nodes()
-        sampling_result["malicious"] = [
-            int_to_bytes(id) for id in malicious_nodes]
+        sampling_result["malicious"] = set(
+            [NodeId(int_to_bytes(id)) for id in malicious_nodes]
+        )
 
         return sampling_result
 
@@ -247,6 +245,10 @@ class SimulatedNode:
         # True Positive: evicting malicious nodes
         # False Negative: NOT evicting malicious nodes
         # True Negative: NOT evicting honest nodes
+
+        print(f"Evicted Nodes: {len(report["evicted"])}")
+        print(f"Malicious Nodes: {len(report["malicious"])}")
+        print(f"Filtered Nodes: {len(report["filtered"])}")
 
         false_positives = set()
         for node in report["evicted"]:
@@ -269,13 +271,10 @@ class SimulatedNode:
                 false_negatives.add(node)
 
         if (len(true_positives) + len(false_negatives)) != len(report["malicious"]):
-            raise Exception(
-                f"number of malicious nodes doesn't match TP + FN, {
-                    len(true_positives)} + {len(false_negatives)} != {len(report["malicious"])}"
-            )
+            raise Exception("number of malicious nodes doesn't match TP + FN")
 
         if (len(false_positives) + len(true_negatives)) != (
-            self.graph.num_nodes() - len(report["filtered"])
+            self.graph.num_nodes() - len(report["malicious"])
         ):
             raise Exception("number of honest nodes doesn't match TN + FP")
 
@@ -290,7 +289,8 @@ class SimulatedNode:
 
         count = 0
         for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
-            if report[sample]:
-                count += 1
+            if sample in report:
+                if report[sample]:
+                    count += 1
 
         print(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")

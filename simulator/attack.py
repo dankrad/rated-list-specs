@@ -43,7 +43,7 @@ class SybilAttack(AttackVec):
         # print(f"Sybil nodes {self.malicious_nodes}")
 
     def should_respond(self, node_vertice: int) -> bool:
-        return node_vertice in self.malicious_nodes
+        return node_vertice not in self.malicious_nodes
 
     def get_malicious_nodes(self):
         return self.malicious_nodes
@@ -62,7 +62,7 @@ class EclipseAttack(AttackVec):
         self.num_attack_nodes = len(self.malicious_nodes)
 
     def should_respond(self, node_vertice: int) -> bool:
-        return node_vertice in self.malicious_nodes
+        return node_vertice not in self.malicious_nodes
 
     def get_malicious_nodes(self):
         return self.malicious_nodes
@@ -94,15 +94,14 @@ class BalancingAttack(AttackVec):
         # we try to poison one of the honest subtree
         self.recursively_add_children(None, honest_node, 0.3)
 
-        malicious_subtree_root = random.choice(
-            self.graph.neighbors(self.root_node))
+        malicious_subtree_root = random.choice(self.graph.neighbors(self.root_node))
         # offline an entire subtree bringing the global confidence score down
         # self.recursively_add_children(None, malicious_subtree_root,1)
         self.num_attack_nodes = len(self.malicious_nodes)
         print(f"malicious nodes={self.num_attack_nodes}")
 
     def should_respond(self, node_vertice: int) -> bool:
-        return node_vertice in self.malicious_nodes
+        return node_vertice not in self.malicious_nodes
 
     def get_malicious_nodes(self):
         return self.malicious_nodes
@@ -118,19 +117,18 @@ class DefunctSubTreeAttack(AttackVec):
     def recursively_add_children(self, parent, node, depth=0):
         if depth == MAX_TREE_DEPTH:
             return
-        depth += 1
+
         for peer in self.graph.neighbors(node):
             if peer != parent:
                 self.malicious_nodes.add(peer)
-                self.recursively_add_children(node, peer, depth)
+                self.recursively_add_children(node, peer, depth + 1)
 
     def setup_attack(self):
-        self.recursively_add_children(
-            self.parent_sub_root, self.defunct_sub_root)
+        self.recursively_add_children(self.parent_sub_root, self.defunct_sub_root, 1)
         self.num_attack_nodes = len(self.malicious_nodes)
 
     def should_respond(self, node_vertice: int) -> bool:
-        return node_vertice in self.malicious_nodes
+        return node_vertice not in self.malicious_nodes
 
     def get_malicious_nodes(self):
         return self.malicious_nodes

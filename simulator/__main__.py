@@ -8,8 +8,9 @@ from node import Root, NodeId, compute_node_score
 from attack import SybilAttack, DefunctSubTreeAttack, BalancingAttack, EclipseAttack
 
 # TODO: change this to not be a global variable
-querying_strategy = "all"
-
+querying_strategy = "high"
+NUM_NODES_RANDOM = 10000
+DEGREE = 50
 
 # mimics a rated list tree without any cycles.
 def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
@@ -41,7 +42,7 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
 def acyclic_graph_defunct_subtree_test():
     print("\nAcyclic Graph Defunct Sub Tree Attack:\n")
     # construct an acyclic subtree
-    acyclic_graph = construct_acyclic_graph(50)
+    acyclic_graph = construct_acyclic_graph(DEGREE)
 
     # mark an entire subtree offline
     attack = DefunctSubTreeAttack(
@@ -50,8 +51,7 @@ def acyclic_graph_defunct_subtree_test():
 
     # initialize a simulated node with rated list node(root node of
     # rated list tree) as root node of the acyclic graph
-    sim_node = SimulatedNode(
-        graph=acyclic_graph, attack=attack, binding_vertex=0)
+    sim_node = SimulatedNode(graph=acyclic_graph, attack=attack, binding_vertex=0)
 
     block_root = Root(int_to_bytes(0))
 
@@ -64,7 +64,7 @@ def acyclic_graph_defunct_subtree_test():
 def random_graph_defunct_subtree_test():
     print("\nRandom Graph Defunct Sub Tree Attack:\n")
     # construct a random graph
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select the rated list node (root node of rated list tree)
     # and a child of the rated list node
@@ -91,7 +91,7 @@ def random_graph_defunct_subtree_test():
 
 def sybil_poisoning_test(rate: int):
     print(f"\nSybil Attack: Rate {rate}\n")
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     sybil_attack = SybilAttack(graph=erdos_renyi_graph, sybil_rate=rate)
 
@@ -113,7 +113,7 @@ def sybil_poisoning_test(rate: int):
 #    and therefore lessen the obligation of serving samples.
 def eclipse_attack_test(rate):
     print(f"\nEclipse Attack: Rate {rate}\n")
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select a node to eclipse
     rnd_node = random.choice(erdos_renyi_graph.nodes())
@@ -144,13 +144,12 @@ def eclipse_attack_test(rate):
 
 def balancing_attack():
     print("\nBalancing Attack:\n")
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(10000, 0.015)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select a root node for the balancing attack
     root_node = random.choice(erdos_renyi_graph.nodes())
 
-    balance_attack = BalancingAttack(
-        graph=erdos_renyi_graph, root_node=root_node)
+    balance_attack = BalancingAttack(graph=erdos_renyi_graph, root_node=root_node)
 
     sim_node = SimulatedNode(
         graph=erdos_renyi_graph, attack=balance_attack, binding_vertex=root_node
