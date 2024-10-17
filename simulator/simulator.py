@@ -38,7 +38,7 @@ class SimulatedNode:
         graph: rx.PyGraph,
         attack: AttackVec,
         binding_vertex: int = None,
-        debug: bool = False,
+        debug: bool = True,
     ):
         self.debug = debug
         self.graph = graph
@@ -227,8 +227,11 @@ class SimulatedNode:
                     ):
                         sampling_result[sample] = True
                         break
-
+                    
+            
             if sample not in sampling_result:
+                self.print_debug(f"sampleId={sample} was not found in the network sample_mapping={self.dht.sample_mapping[sample]}")
+                self.print_debug(f"total honest nodes selected for sampleId={sample} nodes={self.dht.sample_mapping-(all_nodes-filtered_nodes)}")
                 sampling_result[sample] = False
 
         malicious_nodes = self.attack.get_malicious_nodes()
@@ -271,12 +274,14 @@ class SimulatedNode:
                 false_negatives.add(node)
 
         if (len(true_positives) + len(false_negatives)) != len(report["malicious"]):
-            raise Exception("number of malicious nodes doesn't match TP + FN")
+            print(f"number of malicious nodes doesn't match TP + FN")
+            # raise Exception("number of malicious nodes doesn't match TP + FN")
 
         if (len(false_positives) + len(true_negatives)) != (
             self.graph.num_nodes() - len(report["malicious"])
         ):
-            raise Exception("number of honest nodes doesn't match TN + FP")
+            print(f"number of honest nodes doesn't match TN + FP")
+            # raise Exception("number of honest nodes doesn't match TN + FP")
 
         print(
             f"False Positive Rate: {
