@@ -38,7 +38,7 @@ class SimulatedNode:
         graph: rx.PyGraph,
         attack: AttackVec,
         binding_vertex: int = None,
-        debug: bool = True,
+        debug: bool = False,
     ):
         self.debug = debug
         self.graph = graph
@@ -166,6 +166,8 @@ class SimulatedNode:
     def query_samples(self, block_root: Root, querying_strategy):
         sampling_result = {"evicted": set(), "filtered": set(),
                            "malicious": set()}
+        
+        count = 0
 
         # using a random block root just for initial testing
         for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
@@ -190,7 +192,9 @@ class SimulatedNode:
 
             if querying_strategy == "all":
                 for node, _ in filtered_nodes:
+                    count+=1
                     self.request_sample(node, block_root, sample)
+                    
 
                 result = self.process_requests()
 
@@ -213,8 +217,9 @@ class SimulatedNode:
                     filtered_nodes = rn.shuffle(filtered_nodes)
 
                 for node, _ in filtered_nodes:
+                    count+=1
                     self.request_sample(node, block_root, sample)
-
+                    
                     # since we make only request the result would contain only one item
                     result = self.process_requests()[0]
 
@@ -231,7 +236,7 @@ class SimulatedNode:
             
             if sample not in sampling_result:
                 self.print_debug(f"sampleId={sample} was not found in the network sample_mapping={self.dht.sample_mapping[sample]}")
-                self.print_debug(f"total honest nodes selected for sampleId={sample} nodes={self.dht.sample_mapping-(all_nodes-filtered_nodes)}")
+                self.print_debug(f"total honest nodes selected for sampleId={sample} nodes={self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}")
                 sampling_result[sample] = False
 
         malicious_nodes = self.attack.get_malicious_nodes()
@@ -239,6 +244,7 @@ class SimulatedNode:
             [NodeId(int_to_bytes(id)) for id in malicious_nodes]
         )
 
+        print(f"total requests={count}")
         return sampling_result
 
     def print_report(self, report):
@@ -248,7 +254,7 @@ class SimulatedNode:
         # True Positive: evicting malicious nodes
         # False Negative: NOT evicting malicious nodes
         # True Negative: NOT evicting honest nodes
-
+        
         print(f"Evicted Nodes: {len(report["evicted"])}")
         print(f"Malicious Nodes: {len(report["malicious"])}")
         print(f"Filtered Nodes: {len(report["filtered"])}")
