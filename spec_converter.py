@@ -1,10 +1,10 @@
 import re
 
 IMPORTS = """
-from typing import Dict, Tuple, Set, Sequence
-from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64
+from typing import Dict, Tuple, Set, Sequence, List
+from eth2spec.utils.ssz.ssz_typing import Bytes32, uint64, uint256, uint8
 from dataclasses import dataclass
-from dascore import get_custody_columns
+from utils import bytes_to_uint64, uint_to_bytes, hash, ENDIANNESS
 """
 
 
