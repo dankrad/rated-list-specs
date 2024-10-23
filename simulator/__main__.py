@@ -1,16 +1,27 @@
 import rustworkx as rx
 import random
 import time
-
+import matplotlib.pyplot as plt
+import logging
 from utils import int_to_bytes
 from simulator import SimulatedNode
 from node import Root, NodeId, compute_node_score
 from attack import SybilAttack, DefunctSubTreeAttack, BalancingAttack, EclipseAttack
+import numpy as np
 
 # TODO: change this to not be a global variable
 querying_strategy = "high"
+random_query_strategy = "random"
 NUM_NODES_RANDOM = 10000
 DEGREE = 50
+erdos_renyi_graph =rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
+
+logging.basicConfig(
+    filename='debug.log',
+    filemode='w',
+    level=logging.DEBUG,        
+    format='%(levelname)s - %(message)s'  
+)
 
 # mimics a rated list tree without any cycles.
 def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
@@ -40,7 +51,7 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
 
 
 def acyclic_graph_defunct_subtree_test():
-    print("\nAcyclic Graph Defunct Sub Tree Attack:\n")
+    logging.info("\nAcyclic Graph Defunct Sub Tree Attack:\n")
     # construct an acyclic subtree
     acyclic_graph = construct_acyclic_graph(DEGREE)
 
@@ -58,13 +69,13 @@ def acyclic_graph_defunct_subtree_test():
     # query for samples and get a report out
     report = sim_node.query_samples(block_root, querying_strategy)
 
-    sim_node.print_report(report)
+    return sim_node.print_report(report)
 
 
 def random_graph_defunct_subtree_test():
-    print("\nRandom Graph Defunct Sub Tree Attack:\n")
+    logging.info("\nRandom Graph Defunct Sub Tree Attack:\n")
     # construct a random graph
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM, seed=100)
 
     # select the rated list node (root node of rated list tree)
     # and a child of the rated list node
@@ -86,13 +97,14 @@ def random_graph_defunct_subtree_test():
     # query for samples and get a report out
     report = sim_node.query_samples(block_root, querying_strategy)
 
-    sim_node.print_report(report)
+    return sim_node.print_report(report)
 
 
-def sybil_poisoning_test(rate: int):
-    print(f"\nSybil Attack: Rate {rate}\n")
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
+def sybil_poisoning_test(rate: int, random_sampling: bool=False):
+    logging.info(f"\nSybil Attack: Rate {rate}\n")
+    # erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
+    
     sybil_attack = SybilAttack(graph=erdos_renyi_graph, sybil_rate=rate)
 
     sim_node = SimulatedNode(graph=erdos_renyi_graph, attack=sybil_attack)
@@ -100,19 +112,22 @@ def sybil_poisoning_test(rate: int):
     block_root = Root(int_to_bytes(0))
 
     report = sim_node.query_samples(block_root, querying_strategy)
-
     sim_node.print_report(report)
+    
+    random_report = sim_node.query_samples(block_root, random_query_strategy)
+    sim_node.print_report(random_report)
 
-
-# There are various interpretations of an eclipse attack.
-# 1. The attack can be directly on the rated list node. This would hardly provide any
-#    benefit since the node
-# 2. The attack can be on a node in the network to bring down it's score or partition
-#    it's view of the network
-# 3. The attack can be made on another malicious node to bring down it's score
-#    and therefore lessen the obligation of serving samples.
+"""
+There are various interpretations of an eclipse attack.
+1. The attack can be directly on the rated list node. This would hardly provide any
+   benefit since the node
+2. The attack can be on a node in the network to bring down it's score or partition
+   it's view of the network
+3. The attack can be made on another malicious node to bring down it's score
+   and therefore lessen the obligation of serving samples.
+"""
 def eclipse_attack_test(rate):
-    print(f"\nEclipse Attack: Rate {rate}\n")
+    logging.debug(f"\nEclipse Attack: Rate {rate}\n")
     erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select a node to eclipse
@@ -133,17 +148,19 @@ def eclipse_attack_test(rate):
 
     report = sim_node.query_samples(block_root, querying_strategy)
 
-    sim_node.print_report(report)
+    
 
     eclipse_score = compute_node_score(
         sim_node.dht, block_root, NodeId(int_to_bytes(rnd_node))
     )
 
-    print(f"Score of the eclipsed node: {eclipse_score}")
+    logging.info(f"Score of the eclipsed node: {eclipse_score}")
+    
+    return sim_node.print_report(report)
 
 
 def balancing_attack():
-    print("\nBalancing Attack:\n")
+    logging.info("\nBalancing Attack:\n")
     erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select a root node for the balancing attack
@@ -163,24 +180,24 @@ def balancing_attack():
 
 
 def main():
+
     start_time = time.time()
 
-    acyclic_graph_defunct_subtree_test()
-    random_graph_defunct_subtree_test()
+    logging.info(f"number of nodes in the network={NUM_NODES_RANDOM}")
+    logging.info(f"connection degree={DEGREE}")
+    # acyclic_graph_defunct_subtree_test()
+    # # random_graph_defunct_subtree_test()
+    
+    arr = np.arange(0.1, 1.0, 0.1) 
+    
+    for i in np.arange(0.1,1.0,0.1): 
+        sybil_poisoning_test(i)
 
-    sybil_poisoning_test(0.3)
-    sybil_poisoning_test(0.4)
-    sybil_poisoning_test(0.5)
-    sybil_poisoning_test(0.6)
-    sybil_poisoning_test(0.7)
-    sybil_poisoning_test(0.8)
-    sybil_poisoning_test(0.9)
+    # eclipse_attack_test(0.5)
 
-    eclipse_attack_test(0.5)
+    # balancing_attack()
 
-    balancing_attack()
-
-    print(f"the simulator ran for {time.time()-start_time}s")
+    logging.debug(f"the simulator ran for {time.time()-start_time}s")
 
 
 if __name__ == "__main__":

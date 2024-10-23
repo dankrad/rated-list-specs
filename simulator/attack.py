@@ -1,6 +1,7 @@
 import rustworkx as rx
 from node import MAX_TREE_DEPTH
 import random
+import logging 
 
 
 class NodeBehaviour:
@@ -98,7 +99,7 @@ class BalancingAttack(AttackVec):
         # offline an entire subtree bringing the global confidence score down
         # self.recursively_add_children(None, malicious_subtree_root,1)
         self.num_attack_nodes = len(self.malicious_nodes)
-        print(f"malicious nodes={self.num_attack_nodes}")
+        logging.debug(f"malicious nodes={self.num_attack_nodes}")
 
     def should_respond(self, node_vertice: int) -> bool:
         return node_vertice not in self.malicious_nodes

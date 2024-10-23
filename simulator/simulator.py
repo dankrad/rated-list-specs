@@ -4,6 +4,7 @@ import queue
 from dataclasses import dataclass
 from collections import deque
 from typing import Tuple, List
+import logging
 
 # Project specific
 from attack import AttackVec
@@ -31,7 +32,7 @@ class RequestQueueItem:
 class SimulatedNode:
     def print_debug(self, *args):
         if self.debug:
-            print(args)
+            logging.debug(args)
 
     def __init__(
         self,
@@ -168,6 +169,8 @@ class SimulatedNode:
                            "malicious": set()}
         
         count = 0
+        
+        logging.info(f"sampling strategy used-{querying_strategy}")
 
         # using a random block root just for initial testing
         for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
@@ -206,13 +209,32 @@ class SimulatedNode:
                         and response[1]
                     ):
                         sampling_result[sample] = True
+            elif querying_strategy == "random":
+                while True:
+                    random_node = rn.choice(list(all_nodes))
+                    count+=1
+                    self.request_sample(random_node, block_root, sample)
+                    
+                    # since we make only request the result would contain only one item
+                    result = self.process_requests()[0]
+
+                    # if the request was successful break out of the loop
+                    if (
+                        result[0].node_id == random_node
+                        and result[0].sample_id == sample
+                        and result[0].block_root == block_root
+                        and result[1]
+                    ):
+                        sampling_result[sample] = True
+                        break
+                                              
             else:
                 if querying_strategy == "high":
                     # sort the list in descending order
                     sorted(filtered_nodes, key=lambda a: a[1], reverse=True)
                 elif querying_strategy == "low":
                     # sort the list in ascending order
-                    sorted(filtered_nodes, key=lambda a: a[1], reverse=False)
+                    sorted(filtered_nodes, key=lambda a: a[1], reverse=False)   
                 else:
                     filtered_nodes = rn.shuffle(filtered_nodes)
 
@@ -244,7 +266,7 @@ class SimulatedNode:
             [NodeId(int_to_bytes(id)) for id in malicious_nodes]
         )
 
-        print(f"total requests={count}")
+        logging.info(f"total requests={count}")
         return sampling_result
 
     def print_report(self, report):
@@ -255,9 +277,9 @@ class SimulatedNode:
         # False Negative: NOT evicting malicious nodes
         # True Negative: NOT evicting honest nodes
         
-        print(f"Evicted Nodes: {len(report["evicted"])}")
-        print(f"Malicious Nodes: {len(report["malicious"])}")
-        print(f"Filtered Nodes: {len(report["filtered"])}")
+        logging.info(f"Evicted Nodes: {len(report["evicted"])}")
+        logging.info(f"Malicious Nodes: {len(report["malicious"])}")
+        logging.info(f"Filtered Nodes: {len(report["filtered"])}")
 
         false_positives = set()
         for node in report["evicted"]:
@@ -286,20 +308,20 @@ class SimulatedNode:
             report["filtered"].add(self.dht.own_id)
 
         if (len(true_positives) + len(false_negatives)) != len(report["malicious"]):
-            print(f"number of malicious nodes doesn't match TP + FN")
+            logging.info(f"number of malicious nodes doesn't match TP + FN")
             # raise Exception("number of malicious nodes doesn't match TP + FN")
 
         if (len(false_positives) + len(true_negatives)) != (
             self.graph.num_nodes() - len(report["malicious"])
         ):
-            print(f"number of honest nodes doesn't match TN + FP")
+            logging.info(f"number of honest nodes doesn't match TN + FP")
             # raise Exception("number of honest nodes doesn't match TN + FP")
 
-        print(
+        logging.info(
             f"False Positive Rate: {
                 len(false_positives)/(len(false_positives) + len(true_negatives))}"
         )
-        print(
+        logging.info(
             f"False Negative Rate: {
                 len(false_negatives)/(len(false_negatives) + len(true_positives))}"
         )
@@ -310,4 +332,6 @@ class SimulatedNode:
                 if report[sample]:
                     count += 1
 
-        print(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
+        logging.info(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
+        
+        
