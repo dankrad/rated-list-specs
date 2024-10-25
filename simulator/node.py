@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from utils import bytes_to_uint64, uint_to_bytes, hash, ENDIANNESS
 
 
+
 MAX_TREE_DEPTH = 3
 MAX_CHILDREN = 100
 MAX_PARENTS = 100
@@ -76,9 +77,10 @@ def compute_node_score(rated_list_data: RatedListData,
 
     best_score = 0.0
 
+    depth = 1
     # traverse all paths of node_id by iterating through its parents and
     # grand parents. Note the best score when the iteration reaches root
-    while cur_path_scores:
+    while cur_path_scores and depth <= MAX_TREE_DEPTH:
         new_path_scores: Dict[NodeId, float] = {}
         for node, score in cur_path_scores.items():
             touched_nodes.add(node)
@@ -92,7 +94,7 @@ def compute_node_score(rated_list_data: RatedListData,
                         or new_path_scores[parent] < par_score
                     ) and parent not in touched_nodes:
                         new_path_scores[parent] = par_score
-
+        depth += 1
         cur_path_scores = new_path_scores
 
     return best_score
@@ -116,14 +118,18 @@ def on_get_peers_response(rated_list_data: RatedListData, node_id: NodeId, peers
         rated_list_data.nodes[peer_id].parents.add(node_id)
         rated_list_data.nodes[node_id].children.add(peer_id)
 
+    remove_children = []
     for child_id in rated_list_data.nodes[node_id].children:
         if child_id not in peers:
             # Node no longer has child peer, remove link
-            rated_list_data.nodes[node_id].children.remove(child_id)
-            rated_list_data.nodes[child_id].parents.remove(node_id)
+            remove_children.append(child_id)
 
-            if len(rated_list_data.nodes[child_id].parents) == 0:
-                rated_list_data.nodes.remove(child_id)
+    for child_id in remove_children:
+        rated_list_data.nodes[node_id].children.remove(child_id)
+        rated_list_data.nodes[child_id].parents.remove(node_id)
+
+        if len(rated_list_data.nodes[child_id].parents) == 0:
+            del rated_list_data.nodes[child_id]
 
 def on_request_score_update(rated_list_data: RatedListData,
                             block_root: Root,
@@ -197,7 +203,7 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 
         rated_list_data.sample_mapping[id].remove(node_id)
 
-def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> Set[NodeId]:
+def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> Set[Tuple[NodeId, float]]:
     scores = {}
     filter_score = 0.9
     filtered_nodes = set()
@@ -210,7 +216,7 @@ def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id:
                 scores[node_id] = score
 
             if scores[node_id] >= filter_score and node_id not in evicted_nodes:
-                filtered_nodes.add(node_id)
+                filtered_nodes.add((node_id, scores[node_id]))
             else:
                 # print(f"Removed: {node_id} with score {scores[node_id]}")
                 evicted_nodes.add(node_id)
@@ -219,7 +225,6 @@ def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id:
         if len(filtered_nodes) > 0:
             break
 
-        print("No nodes above threshold using average")
         # if no nodes are filtered then reset the filter score to avg - 0.1. this will guarantee atleast one node.
         filter_score = (
             sum([score for _, score in scores.items()]) / len(scores) - 0.1
@@ -255,5 +260,4 @@ def get_custody_columns(
             for subnet_id in subnet_ids
         ]
     )
-
 

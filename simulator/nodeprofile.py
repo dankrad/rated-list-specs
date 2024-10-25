@@ -1,5 +1,5 @@
 import rustworkx as rx
-from attack.attack import AttackVec
+from attack import AttackVec
 
 class NodeBehaviour:
     def __init__(self, graph: rx.PyGraph, attack: AttackVec):

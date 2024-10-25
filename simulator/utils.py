@@ -14,5 +14,14 @@ def uint_to_bytes(n: uint) -> bytes:
     return serialize(n)
 
 
+def bytes_to_int(data) -> int:
+    return int.from_bytes(data, ENDIANNESS)
+
+
+def int_to_bytes(n: int) -> bytes:
+    return n.to_bytes(32, ENDIANNESS)
+
+
 def hash(data: bytes) -> Bytes32:
     return Bytes32(sha256(data).digest())
+
