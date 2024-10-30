@@ -1,6 +1,6 @@
 **/venv
 **/__pycache__
 
-
+random_graph.json
 .DS_Store
 *.log

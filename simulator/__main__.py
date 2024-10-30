@@ -1,15 +1,17 @@
 import rustworkx as rx
 import random
 import time
-import matplotlib.pyplot as plt
 import logging
 from utils import int_to_bytes
 from simulator import SimulatedNode
 from node import Root, NodeId, compute_node_score
 from attack import SybilAttack, DefunctSubTreeAttack, BalancingAttack, EclipseAttack
 import numpy as np
+import os
+import json
 
 # TODO: change this to not be a global variable
+GRAPH_JSON_FILE = './data/random_graph.json'
 querying_strategy = "high"
 random_query_strategy = "random"
 NUM_NODES_RANDOM = 10000
@@ -178,8 +180,21 @@ def balancing_attack():
 
     sim_node.print_report(report)
 
+def graph_init():
+    if (os.path.isfile('./data/random_graph.json')):
+        logging.info("loading graph from json file")
+        with open(GRAPH_JSON_FILE,'r') as file:
+            data = json.load(file)
+        erdos_renyi_graph = rx.parse_node_link_json(data=json.dump(data))
+    else:
+        logging.info("graph not found generating graph")
+        erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
+        json_str = rx.node_link_json(erdos_renyi_graph)
+        with open(GRAPH_JSON_FILE,'w') as file:
+            file.write(json_str)
 
 def main():
+    graph_init()
 
     start_time = time.time()
 
