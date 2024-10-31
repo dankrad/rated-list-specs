@@ -56,7 +56,8 @@ def acyclic_graph_defunct_subtree_test(querying_strategy="high"):
 
     # initialize a simulated node with rated list node(root node of
     # rated list tree) as root node of the acyclic graph
-    sim_node = SimulatedNode(graph=acyclic_graph, attack=attack, binding_vertex=0)
+    sim_node = SimulatedNode(
+        graph=acyclic_graph, attack=attack, binding_vertex=0)
 
     block_root = Root(int_to_bytes(0))
 
@@ -108,10 +109,10 @@ def sybil_poisoning_test(graph, rate: float):
     for threshold in np.arange(0.9, 0.0, -0.1):
         for strategy in ["high", "low", "random"]:
             report = sim_node.query_samples(
-                block_root, querying_strategy, is_rated_list=True, threshold=threshold
+                block_root, strategy, is_rated_list=True, threshold=threshold
             )
             random_report = sim_node.query_samples(
-                block_root, querying_strategy, is_rated_list=False, threshold=threshold
+                block_root, strategy, is_rated_list=False, threshold=threshold
             )
 
             sim_node.print_report(report)
@@ -200,13 +201,15 @@ def balancing_attack(graph, querying_strategy="high"):
 def graph_init():
     if os.path.isfile(GRAPH_JSON_FILE):
         logging.info("loading graph from json file")
-        graph = rx.from_node_link_json_file(GRAPH_JSON_FILE, node_attrs=de_node_data)
+        graph = rx.from_node_link_json_file(
+            GRAPH_JSON_FILE, node_attrs=de_node_data)
     else:
         logging.info("graph not found generating graph")
         graph = rx.undirected_gnp_random_graph(
             NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
         )
-        rx.node_link_json(graph, path=GRAPH_JSON_FILE, node_attrs=ser_node_data)
+        rx.node_link_json(graph, path=GRAPH_JSON_FILE,
+                          node_attrs=ser_node_data)
     return graph
 
 
@@ -243,12 +246,12 @@ def main():
 
 if __name__ == "__main__":
     run_num = sys.argv[1]
-    filename = "log_file_" + str(run_num)
+    filename = "./data/log_file_" + str(run_num) + ".log"
 
     print(filename)
 
     logging.basicConfig(
-        filename="debug.log",
+        filename=filename,
         filemode="w",
         level=logging.DEBUG,
         format="%(levelname)s - %(message)s",
