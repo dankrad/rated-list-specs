@@ -257,12 +257,10 @@ class SimulatedNode:
 
             if sample not in sampling_result:
                 self.print_debug(
-                    f"sampleId={sample} was not found in the network sample_mapping={
-                        self.dht.sample_mapping[sample]}"
+                    f"sampleId={sample} was not found in the network sample_mapping={self.dht.sample_mapping[sample]}"
                 )
                 self.print_debug(
-                    f"total honest nodes selected for sampleId={sample} nodes={
-                        self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}"
+                    f"total honest nodes selected for sampleId={sample} nodes={self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}"
                 )
                 sampling_result[sample] = False
 
@@ -328,12 +326,10 @@ class SimulatedNode:
             # raise Exception("number of honest nodes doesn't match TN + FP")
 
         logging.info(
-            f"False Positive Rate: {
-                len(false_positives)/(len(false_positives) + len(true_negatives))}"
+            f"False Positive Rate: {len(false_positives)/(len(false_positives) + len(true_negatives))}"
         )
         logging.info(
-            f"False Negative Rate: {
-                len(false_negatives)/(len(false_negatives) + len(true_positives))}"
+            f"False Negative Rate: {len(false_negatives)/(len(false_negatives) + len(true_positives))}"
         )
 
         count = 0
@@ -342,7 +338,6 @@ class SimulatedNode:
                 if report[sample]:
                     count += 1
 
-        logging.info(f"Obtained Samples: {
-                     count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
+        logging.info(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
 
         logging.info(f"total requests = {report['requests']}")
