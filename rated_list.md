@@ -274,9 +274,9 @@ def remove_samples_on_exit(rated_list_data: RatedListData, node_id: NodeId):
 ### `filter_nodes`
 
 ```python
-def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId) -> Set[Tuple[NodeId, float]]:
+def filter_nodes(rated_list_data: RatedListData, block_root: Bytes32, sample_id: SampleId, threshold: float = 0.9) -> Set[Tuple[NodeId, float]]:
     scores = {}
-    filter_score = 0.9
+    filter_score = threshold
     filtered_nodes = set()
 
     for i in range(2):

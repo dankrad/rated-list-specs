@@ -9,20 +9,12 @@ from attack import SybilAttack, DefunctSubTreeAttack, BalancingAttack, EclipseAt
 import numpy as np
 import os
 import json
+import sys
 
 # TODO: change this to not be a global variable
 GRAPH_JSON_FILE = "./data/random_graph.json"
 NUM_NODES_RANDOM = 10000
 DEGREE = 50
-GRAPH = None
-
-logging.basicConfig(
-    filename="debug.log",
-    filemode="w",
-    level=logging.DEBUG,
-    format="%(levelname)s - %(message)s",
-)
-
 # mimics a rated list tree without any cycles.
 
 
@@ -105,23 +97,25 @@ def random_graph_defunct_subtree_test(querying_strategy="high"):
     return sim_node.print_report(report)
 
 
-def sybil_poisoning_test(
-    graph, rate: int, querying_strategy="high", is_rated_list=True
-):
+def sybil_poisoning_test(graph, rate: float):
     logging.info(f"\n\nSybil Attack: Rate {rate}\n")
-    # erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
-    
     sybil_attack = SybilAttack(graph=graph, sybil_rate=rate)
 
     sim_node = SimulatedNode(graph=graph, attack=sybil_attack)
 
     block_root = Root(int_to_bytes(0))
 
-    report = sim_node.query_samples(block_root, querying_strategy, is_rated_list)
-    random_report = sim_node.query_samples(block_root, querying_strategy, is_rated_list)
+    for threshold in np.arange(0.9, 0.0, -0.1):
+        for strategy in ["high", "low", "random"]:
+            report = sim_node.query_samples(
+                block_root, querying_strategy, is_rated_list=True, threshold=threshold
+            )
+            random_report = sim_node.query_samples(
+                block_root, querying_strategy, is_rated_list=False, threshold=threshold
+            )
 
-    sim_node.print_report(report)
-    sim_node.print_report(random_report)
+            sim_node.print_report(report)
+            sim_node.print_report(random_report)
 
 
 """
@@ -191,7 +185,7 @@ def balancing_attack(graph, querying_strategy="high"):
 #             # data = json.load(file)
 #         graph = rx.from_node_link_json_file(GRAPH_JSON_FILE)
 #         print(graph.nodes())
-        
+
 #     else:
 #         logging.info("graph not found generating graph")
 #         graph = rx.undirected_gnp_random_graph(
@@ -202,23 +196,29 @@ def balancing_attack(graph, querying_strategy="high"):
 #             file.write(json_str)
 #         return graph
 
+
 def graph_init():
-    if (os.path.isfile(GRAPH_JSON_FILE)):
+    if os.path.isfile(GRAPH_JSON_FILE):
         logging.info("loading graph from json file")
         graph = rx.from_node_link_json_file(GRAPH_JSON_FILE, node_attrs=de_node_data)
     else:
         logging.info("graph not found generating graph")
-        graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
-        rx.node_link_json(graph,path=GRAPH_JSON_FILE, node_attrs=ser_node_data)
+        graph = rx.undirected_gnp_random_graph(
+            NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
+        )
+        rx.node_link_json(graph, path=GRAPH_JSON_FILE, node_attrs=ser_node_data)
     return graph
+
 
 def de_node_data(data):
     return int(data["value"])
 
+
 def ser_node_data(data):
-    mydict={}
-    mydict['value']=str(data)
+    mydict = {}
+    mydict["value"] = str(data)
     return mydict
+
 
 def main():
     graph = graph_init()
@@ -231,8 +231,8 @@ def main():
     # acyclic_graph_defunct_subtree_test()
     # random_graph_defunct_subtree_test()
 
-    for i in np.arange(0.1, 1.0, 0.1):
-        sybil_poisoning_test(graph, i)
+    for sybil_rate in np.arange(0.1, 1.0, 0.1):
+        sybil_poisoning_test(graph, sybil_rate)
 
     # eclipse_attack_test(0.5)
 
@@ -242,4 +242,16 @@ def main():
 
 
 if __name__ == "__main__":
+    run_num = sys.argv[1]
+    filename = "log_file_" + str(run_num)
+
+    print(filename)
+
+    logging.basicConfig(
+        filename="debug.log",
+        filemode="w",
+        level=logging.DEBUG,
+        format="%(levelname)s - %(message)s",
+    )
+
     main()
