@@ -161,14 +161,20 @@ class SimulatedNode:
 
         return False
 
-    def query_samples(self, block_root: Root, querying_strategy, is_rated_list: bool):
+    def query_samples(
+        self,
+        block_root: Root,
+        querying_strategy="high",
+        is_rated_list: bool = True,
+        threshold: float = 0.9,
+    ):
         sampling_result = {"evicted": set(), "filtered": set(), "malicious": set()}
 
         count = 0
 
         # calculate the set of evicted nodes a.k.a nodes not filtered
-        logging.info(
-            f"sampling strategy used - {querying_strategy if is_rated_list else 'rated list OFF'}"
+        sampling_result["strategy"] = (
+            querying_strategy if is_rated_list else "rated list OFF"
         )
 
         # using a random block root just for initial testing
@@ -184,12 +190,16 @@ class SimulatedNode:
             if not is_rated_list:
                 # force random strategy
                 querying_strategy = "no filtering"
-                filtered_nodes = self.dht.sample_mapping[sample]
+                filtered_nodes = set(
+                    [(id, 1.0) for id in self.dht.sample_mapping[sample]]
+                )
             else:
-                filtered_nodes = rl_node.filter_nodes(self.dht, block_root, sample)
+                filtered_nodes = rl_node.filter_nodes(
+                    self.dht, block_root, sample, threshold
+                )
 
             all_nodes = self.dht.sample_mapping[sample]
-            filtered_set = set([node for node, _ in filtered_nodes])
+            filtered_set = set([node[0] for node in filtered_nodes])
 
             sampling_result["filtered"].update(filtered_set)
             sampling_result["evicted"].update(all_nodes - filtered_set)
@@ -220,7 +230,7 @@ class SimulatedNode:
                     # sort the list in ascending order
                     sorted(filtered_nodes, key=lambda a: a[1], reverse=False)
                 else:
-                    filtered_nodes = rn.shuffle(filtered_nodes)
+                    rn.shuffle(list(filtered_nodes))
 
                 for node, _ in filtered_nodes:
                     count += 1
@@ -263,6 +273,7 @@ class SimulatedNode:
         # False Negative: NOT evicting malicious nodes
         # True Negative: NOT evicting honest nodes
 
+        logging.info(f"Sampling Strategy: {report["strategy"]}")
         logging.info(f"Evicted Nodes: {len(report["evicted"])}")
         logging.info(f"Malicious Nodes: {len(report["malicious"])}")
         logging.info(f"Filtered Nodes: {len(report["filtered"])}")
@@ -319,6 +330,6 @@ class SimulatedNode:
                     count += 1
 
         logging.info(f"Obtained Samples: {
-                     count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
+            count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
 
         logging.info(f"total requests = {report['requests']}")
