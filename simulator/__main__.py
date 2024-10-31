@@ -110,7 +110,7 @@ def sybil_poisoning_test(
 ):
     logging.info(f"\n\nSybil Attack: Rate {rate}\n")
     # erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
-
+    
     sybil_attack = SybilAttack(graph=graph, sybil_rate=rate)
 
     sim_node = SimulatedNode(graph=graph, attack=sybil_attack)
@@ -184,24 +184,41 @@ def balancing_attack(graph, querying_strategy="high"):
     sim_node.print_report(report)
 
 
+# def graph_init():
+#     if os.path.exists("./data/random_graph.json"):
+#         logging.info("loading graph from json file")
+#         # with open(GRAPH_JSON_FILE, "r") as file:
+#             # data = json.load(file)
+#         graph = rx.from_node_link_json_file(GRAPH_JSON_FILE)
+#         print(graph.nodes())
+        
+#     else:
+#         logging.info("graph not found generating graph")
+#         graph = rx.undirected_gnp_random_graph(
+#             NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
+#         )
+#         json_str = rx.node_link_json(graph)
+#         with open(GRAPH_JSON_FILE, "w") as file:
+#             file.write(json_str)
+#         return graph
+
 def graph_init():
-    if os.path.exists("./data/random_graph.json"):
+    if (os.path.isfile(GRAPH_JSON_FILE)):
         logging.info("loading graph from json file")
-        with open(GRAPH_JSON_FILE, "r") as file:
-            data = json.load(file)
-            graph = rx.parse_node_link_json(data=json.dumps(data))
-            return graph
+        graph = rx.from_node_link_json_file(GRAPH_JSON_FILE, node_attrs=de_node_data)
     else:
         logging.info("graph not found generating graph")
-        graph = rx.undirected_gnp_random_graph(
-            NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
-        )
-        json_str = rx.node_link_json(graph)
-        with open(GRAPH_JSON_FILE, "w") as file:
-            file.write(json_str)
+        graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
+        rx.node_link_json(graph,path=GRAPH_JSON_FILE, node_attrs=ser_node_data)
+    return graph
 
-        return graph
+def de_node_data(data):
+    return int(data["value"])
 
+def ser_node_data(data):
+    mydict={}
+    mydict['value']=str(data)
+    return mydict
 
 def main():
     graph = graph_init()
