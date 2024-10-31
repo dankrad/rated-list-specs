@@ -57,10 +57,8 @@ class SimulatedNode:
         if binding_vertex is None:
             binding_vertex = rn.choice(self.graph.node_indices())
 
-        self.dht = RatedListData(
-            NodeId(int_to_bytes(binding_vertex)), {}, {}, {})
-        self.dht.nodes[self.dht.own_id] = NodeRecord(
-            self.dht.own_id, set(), set())
+        self.dht = RatedListData(NodeId(int_to_bytes(binding_vertex)), {}, {}, {})
+        self.dht.nodes[self.dht.own_id] = NodeRecord(self.dht.own_id, set(), set())
 
         self.print_debug(
             "mapped rated list node to graph vertice " + str(binding_vertex)
@@ -79,8 +77,7 @@ class SimulatedNode:
 
         rl_node.on_request_score_update(self.dht, block_root, node_id, sample)
         self.request_queue.put(
-            RequestQueueItem(node_id=node_id, sample_id=sample,
-                             block_root=block_root)
+            RequestQueueItem(node_id=node_id, sample_id=sample, block_root=block_root)
         )
 
     def get_peers(self, node_id: NodeId):
@@ -164,26 +161,33 @@ class SimulatedNode:
 
         return False
 
-    def query_samples(self, block_root: Root, querying_strategy):
-        sampling_result = {"evicted": set(), "filtered": set(),
-                           "malicious": set()}
-        
+    def query_samples(self, block_root: Root, querying_strategy, is_rated_list: bool):
+        sampling_result = {"evicted": set(), "filtered": set(), "malicious": set()}
+
         count = 0
-        
-        logging.info(f"sampling strategy used-{querying_strategy}")
+
+        # calculate the set of evicted nodes a.k.a nodes not filtered
+        logging.info(
+            f"sampling strategy used - {querying_strategy if is_rated_list else 'rated list OFF'}"
+        )
 
         # using a random block root just for initial testing
         for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
             # NOTE: technically all samples must be in the mapping.
             # we just need enough nodes in the network
             if sample not in self.dht.sample_mapping:
-                self.print_debug(
-                    "No record of nodes that serve sample: " + str(sample))
+                self.print_debug("No record of nodes that serve sample: " + str(sample))
                 continue
 
-            filtered_nodes = rl_node.filter_nodes(self.dht, block_root, sample)
+            filtered_nodes = set()
 
-            # calculate the set of evicted nodes a.k.a nodes not filtered
+            if not is_rated_list:
+                # force random strategy
+                querying_strategy = "no filtering"
+                filtered_nodes = self.dht.sample_mapping[sample]
+            else:
+                filtered_nodes = rl_node.filter_nodes(self.dht, block_root, sample)
+
             all_nodes = self.dht.sample_mapping[sample]
             filtered_set = set([node for node, _ in filtered_nodes])
 
@@ -195,9 +199,8 @@ class SimulatedNode:
 
             if querying_strategy == "all":
                 for node, _ in filtered_nodes:
-                    count+=1
+                    count += 1
                     self.request_sample(node, block_root, sample)
-                    
 
                 result = self.process_requests()
 
@@ -209,39 +212,20 @@ class SimulatedNode:
                         and response[1]
                     ):
                         sampling_result[sample] = True
-            elif querying_strategy == "random":
-                while True:
-                    random_node = rn.choice(list(all_nodes))
-                    count+=1
-                    self.request_sample(random_node, block_root, sample)
-                    
-                    # since we make only request the result would contain only one item
-                    result = self.process_requests()[0]
-
-                    # if the request was successful break out of the loop
-                    if (
-                        result[0].node_id == random_node
-                        and result[0].sample_id == sample
-                        and result[0].block_root == block_root
-                        and result[1]
-                    ):
-                        sampling_result[sample] = True
-                        break
-                                              
             else:
                 if querying_strategy == "high":
                     # sort the list in descending order
                     sorted(filtered_nodes, key=lambda a: a[1], reverse=True)
                 elif querying_strategy == "low":
                     # sort the list in ascending order
-                    sorted(filtered_nodes, key=lambda a: a[1], reverse=False)   
+                    sorted(filtered_nodes, key=lambda a: a[1], reverse=False)
                 else:
                     filtered_nodes = rn.shuffle(filtered_nodes)
 
                 for node, _ in filtered_nodes:
-                    count+=1
+                    count += 1
                     self.request_sample(node, block_root, sample)
-                    
+
                     # since we make only request the result would contain only one item
                     result = self.process_requests()[0]
 
@@ -254,11 +238,12 @@ class SimulatedNode:
                     ):
                         sampling_result[sample] = True
                         break
-                    
-            
+
             if sample not in sampling_result:
-                self.print_debug(f"sampleId={sample} was not found in the network sample_mapping={self.dht.sample_mapping[sample]}")
-                self.print_debug(f"total honest nodes selected for sampleId={sample} nodes={self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}")
+                self.print_debug(f"sampleId={sample} was not found in the network sample_mapping={
+                                 self.dht.sample_mapping[sample]}")
+                self.print_debug(f"total honest nodes selected for sampleId={sample} nodes={
+                                 self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}")
                 sampling_result[sample] = False
 
         malicious_nodes = self.attack.get_malicious_nodes()
@@ -266,7 +251,8 @@ class SimulatedNode:
             [NodeId(int_to_bytes(id)) for id in malicious_nodes]
         )
 
-        logging.info(f"total requests={count}")
+        sampling_result["requests"] = count
+
         return sampling_result
 
     def print_report(self, report):
@@ -276,7 +262,7 @@ class SimulatedNode:
         # True Positive: evicting malicious nodes
         # False Negative: NOT evicting malicious nodes
         # True Negative: NOT evicting honest nodes
-        
+
         logging.info(f"Evicted Nodes: {len(report["evicted"])}")
         logging.info(f"Malicious Nodes: {len(report["malicious"])}")
         logging.info(f"Filtered Nodes: {len(report["filtered"])}")
@@ -332,6 +318,7 @@ class SimulatedNode:
                 if report[sample]:
                     count += 1
 
-        logging.info(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
-        
-        
+        logging.info(f"Obtained Samples: {
+                     count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
+
+        logging.info(f"total requests = {report['requests']}")

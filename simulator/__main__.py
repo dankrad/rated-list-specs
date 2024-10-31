@@ -11,21 +11,21 @@ import os
 import json
 
 # TODO: change this to not be a global variable
-GRAPH_JSON_FILE = './data/random_graph.json'
-querying_strategy = "high"
-random_query_strategy = "random"
+GRAPH_JSON_FILE = "./data/random_graph.json"
 NUM_NODES_RANDOM = 10000
 DEGREE = 50
-erdos_renyi_graph =rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
+GRAPH = None
 
 logging.basicConfig(
-    filename='debug.log',
-    filemode='w',
-    level=logging.DEBUG,        
-    format='%(levelname)s - %(message)s'  
+    filename="debug.log",
+    filemode="w",
+    level=logging.DEBUG,
+    format="%(levelname)s - %(message)s",
 )
 
 # mimics a rated list tree without any cycles.
+
+
 def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
     G = rx.PyGraph()
 
@@ -52,7 +52,7 @@ def construct_acyclic_graph(degree: int = 5) -> rx.PyGraph:
     return G
 
 
-def acyclic_graph_defunct_subtree_test():
+def acyclic_graph_defunct_subtree_test(querying_strategy="high"):
     logging.info("\nAcyclic Graph Defunct Sub Tree Attack:\n")
     # construct an acyclic subtree
     acyclic_graph = construct_acyclic_graph(DEGREE)
@@ -74,10 +74,13 @@ def acyclic_graph_defunct_subtree_test():
     return sim_node.print_report(report)
 
 
-def random_graph_defunct_subtree_test():
+def random_graph_defunct_subtree_test(querying_strategy="high"):
     logging.info("\nRandom Graph Defunct Sub Tree Attack:\n")
+
     # construct a random graph
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM, seed=100)
+    erdos_renyi_graph = rx.undirected_gnp_random_graph(
+        NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM, seed=100
+    )
 
     # select the rated list node (root node of rated list tree)
     # and a child of the rated list node
@@ -102,22 +105,24 @@ def random_graph_defunct_subtree_test():
     return sim_node.print_report(report)
 
 
-def sybil_poisoning_test(rate: int, random_sampling: bool=False):
-    logging.info(f"\nSybil Attack: Rate {rate}\n")
+def sybil_poisoning_test(
+    graph, rate: int, querying_strategy="high", is_rated_list=True
+):
+    logging.info(f"\n\nSybil Attack: Rate {rate}\n")
     # erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
-    
-    sybil_attack = SybilAttack(graph=erdos_renyi_graph, sybil_rate=rate)
+    sybil_attack = SybilAttack(graph=graph, sybil_rate=rate)
 
-    sim_node = SimulatedNode(graph=erdos_renyi_graph, attack=sybil_attack)
+    sim_node = SimulatedNode(graph=graph, attack=sybil_attack)
 
     block_root = Root(int_to_bytes(0))
 
-    report = sim_node.query_samples(block_root, querying_strategy)
+    report = sim_node.query_samples(block_root, querying_strategy, is_rated_list)
+    random_report = sim_node.query_samples(block_root, querying_strategy, is_rated_list)
+
     sim_node.print_report(report)
-    
-    random_report = sim_node.query_samples(block_root, random_query_strategy)
     sim_node.print_report(random_report)
+
 
 """
 There are various interpretations of an eclipse attack.
@@ -128,14 +133,15 @@ There are various interpretations of an eclipse attack.
 3. The attack can be made on another malicious node to bring down it's score
    and therefore lessen the obligation of serving samples.
 """
-def eclipse_attack_test(rate):
+
+
+def eclipse_attack_test(graph, rate: int, querying_strategy="high"):
     logging.debug(f"\nEclipse Attack: Rate {rate}\n")
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select a node to eclipse
-    rnd_node = random.choice(erdos_renyi_graph.nodes())
+    rnd_node = random.choice(graph.nodes())
     eclipse_root_node = EclipseAttack(
-        graph=erdos_renyi_graph, compromised_node=rnd_node, eclipse_rate=rate
+        graph=graph, compromised_node=rnd_node, eclipse_rate=rate
     )
 
     # Eclipse the root node itself by setting the binding vertex the same as the compromised node
@@ -144,34 +150,31 @@ def eclipse_attack_test(rate):
     # )
 
     # Eclipse a random node by not setting the binding vertex the same as the compromised node
-    sim_node = SimulatedNode(graph=erdos_renyi_graph, attack=eclipse_root_node)
+    sim_node = SimulatedNode(graph=graph, attack=eclipse_root_node)
 
     block_root = Root(int_to_bytes(0))
 
     report = sim_node.query_samples(block_root, querying_strategy)
-
-    
 
     eclipse_score = compute_node_score(
         sim_node.dht, block_root, NodeId(int_to_bytes(rnd_node))
     )
 
     logging.info(f"Score of the eclipsed node: {eclipse_score}")
-    
+
     return sim_node.print_report(report)
 
 
-def balancing_attack():
+def balancing_attack(graph, querying_strategy="high"):
     logging.info("\nBalancing Attack:\n")
-    erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
 
     # select a root node for the balancing attack
-    root_node = random.choice(erdos_renyi_graph.nodes())
+    root_node = random.choice(graph.nodes())
 
-    balance_attack = BalancingAttack(graph=erdos_renyi_graph, root_node=root_node)
+    balance_attack = BalancingAttack(graph=graph, root_node=root_node)
 
     sim_node = SimulatedNode(
-        graph=erdos_renyi_graph, attack=balance_attack, binding_vertex=root_node
+        graph=graph, attack=balance_attack, binding_vertex=root_node
     )
 
     block_root = Root(int_to_bytes(0))
@@ -180,33 +183,39 @@ def balancing_attack():
 
     sim_node.print_report(report)
 
+
 def graph_init():
-    if (os.path.isfile('./data/random_graph.json')):
+    if os.path.exists("./data/random_graph.json"):
         logging.info("loading graph from json file")
-        with open(GRAPH_JSON_FILE,'r') as file:
+        with open(GRAPH_JSON_FILE, "r") as file:
             data = json.load(file)
-        erdos_renyi_graph = rx.parse_node_link_json(data=json.dump(data))
+            graph = rx.parse_node_link_json(data=json.dumps(data))
+            return graph
     else:
         logging.info("graph not found generating graph")
-        erdos_renyi_graph = rx.undirected_gnp_random_graph(NUM_NODES_RANDOM, DEGREE/NUM_NODES_RANDOM)
-        json_str = rx.node_link_json(erdos_renyi_graph)
-        with open(GRAPH_JSON_FILE,'w') as file:
+        graph = rx.undirected_gnp_random_graph(
+            NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
+        )
+        json_str = rx.node_link_json(graph)
+        with open(GRAPH_JSON_FILE, "w") as file:
             file.write(json_str)
 
+        return graph
+
+
 def main():
-    graph_init()
+    graph = graph_init()
 
     start_time = time.time()
 
     logging.info(f"number of nodes in the network={NUM_NODES_RANDOM}")
     logging.info(f"connection degree={DEGREE}")
+
     # acyclic_graph_defunct_subtree_test()
-    # # random_graph_defunct_subtree_test()
-    
-    arr = np.arange(0.1, 1.0, 0.1) 
-    
-    for i in np.arange(0.1,1.0,0.1): 
-        sybil_poisoning_test(i)
+    # random_graph_defunct_subtree_test()
+
+    for i in np.arange(0.1, 1.0, 0.1):
+        sybil_poisoning_test(graph, i)
 
     # eclipse_attack_test(0.5)
 
