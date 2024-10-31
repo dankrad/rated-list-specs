@@ -56,8 +56,7 @@ def acyclic_graph_defunct_subtree_test(querying_strategy="high"):
 
     # initialize a simulated node with rated list node(root node of
     # rated list tree) as root node of the acyclic graph
-    sim_node = SimulatedNode(
-        graph=acyclic_graph, attack=attack, binding_vertex=0)
+    sim_node = SimulatedNode(graph=acyclic_graph, attack=attack, binding_vertex=0)
 
     block_root = Root(int_to_bytes(0))
 
@@ -98,25 +97,26 @@ def random_graph_defunct_subtree_test(querying_strategy="high"):
     return sim_node.print_report(report)
 
 
-def sybil_poisoning_test(graph, rate: float):
-    logging.info(f"\n\nSybil Attack: Rate {rate}\n")
-    sybil_attack = SybilAttack(graph=graph, sybil_rate=rate)
-
-    sim_node = SimulatedNode(graph=graph, attack=sybil_attack)
+def sybil_poisoning_test(graph):
+    sim_node = SimulatedNode(graph=graph)
 
     block_root = Root(int_to_bytes(0))
 
-    for threshold in np.arange(0.9, 0.0, -0.1):
-        for strategy in ["high", "low", "random"]:
-            report = sim_node.query_samples(
-                block_root, strategy, is_rated_list=True, threshold=threshold
-            )
-            random_report = sim_node.query_samples(
-                block_root, strategy, is_rated_list=False, threshold=threshold
-            )
+    for rate in np.arange(0.1, 1.0, 0.1):
+        logging.info(f"\n\nSybil Attack: Rate {rate}\n")
+        sybil_attack = SybilAttack(graph=graph, sybil_rate=rate)
+        sim_node.refresh_attack(sybil_attack)
+        for threshold in np.arange(0.9, 0.0, -0.1):
+            for strategy in ["high", "low", "random"]:
+                report = sim_node.query_samples(
+                    block_root, strategy, is_rated_list=True, threshold=threshold
+                )
+                random_report = sim_node.query_samples(
+                    block_root, strategy, is_rated_list=False, threshold=threshold
+                )
 
-            sim_node.print_report(report)
-            sim_node.print_report(random_report)
+                sim_node.print_report(report)
+                sim_node.print_report(random_report)
 
 
 """
@@ -201,15 +201,13 @@ def balancing_attack(graph, querying_strategy="high"):
 def graph_init():
     if os.path.isfile(GRAPH_JSON_FILE):
         logging.info("loading graph from json file")
-        graph = rx.from_node_link_json_file(
-            GRAPH_JSON_FILE, node_attrs=de_node_data)
+        graph = rx.from_node_link_json_file(GRAPH_JSON_FILE, node_attrs=de_node_data)
     else:
         logging.info("graph not found generating graph")
         graph = rx.undirected_gnp_random_graph(
             NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
         )
-        rx.node_link_json(graph, path=GRAPH_JSON_FILE,
-                          node_attrs=ser_node_data)
+        rx.node_link_json(graph, path=GRAPH_JSON_FILE, node_attrs=ser_node_data)
     return graph
 
 
@@ -234,8 +232,7 @@ def main():
     # acyclic_graph_defunct_subtree_test()
     # random_graph_defunct_subtree_test()
 
-    for sybil_rate in np.arange(0.1, 1.0, 0.1):
-        sybil_poisoning_test(graph, sybil_rate)
+    sybil_poisoning_test(graph)
 
     # eclipse_attack_test(0.5)
 

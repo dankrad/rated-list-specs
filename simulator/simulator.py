@@ -37,14 +37,12 @@ class SimulatedNode:
     def __init__(
         self,
         graph: rx.PyGraph,
-        attack: AttackVec,
         binding_vertex: int = None,
         debug: bool = False,
     ):
         self.debug = debug
         self.graph = graph
         self.request_queue = queue.Queue()
-        self.attack = attack
 
         # calculate average degree of the graph
         sum = 0
@@ -68,9 +66,16 @@ class SimulatedNode:
 
         self.print_debug("constructed the rated list")
 
+    def refresh_attack(self, attack: AttackVec):
+        # flush scores for new attack
+        self.dht.scores = {}
+
+        self.attack = attack
+        self.request_queue = queue.Queue()
+
         self.attack.setup_attack()
 
-        self.print_debug("initialized the attack vector")
+        self.print_debug("initialized the new attack vector")
 
     def request_sample(self, node_id: NodeId, block_root: Root, sample: SampleId):
         self.print_debug("Requesting samples from", node_id)
@@ -169,13 +174,14 @@ class SimulatedNode:
         threshold: float = 0.9,
     ):
         sampling_result = {"evicted": set(), "filtered": set(), "malicious": set()}
-
         count = 0
 
         # calculate the set of evicted nodes a.k.a nodes not filtered
         sampling_result["strategy"] = (
             querying_strategy if is_rated_list else "rated list OFF"
         )
+
+        sampling_result["threshold"] = threshold
 
         # using a random block root just for initial testing
         for sample in range(DATA_COLUMN_SIDECAR_SUBNET_COUNT):
@@ -251,10 +257,12 @@ class SimulatedNode:
 
             if sample not in sampling_result:
                 self.print_debug(
-                    f"sampleId={sample} was not found in the network sample_mapping={self.dht.sample_mapping[sample]}"
+                    f"sampleId={sample} was not found in the network sample_mapping={
+                        self.dht.sample_mapping[sample]}"
                 )
                 self.print_debug(
-                    f"total honest nodes selected for sampleId={sample} nodes={self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}"
+                    f"total honest nodes selected for sampleId={sample} nodes={
+                        self.dht.sample_mapping[sample]-(all_nodes-filtered_nodes)}"
                 )
                 sampling_result[sample] = False
 
@@ -275,6 +283,9 @@ class SimulatedNode:
         # False Negative: NOT evicting malicious nodes
         # True Negative: NOT evicting honest nodes
 
+        logging.info("\n\n\n")
+
+        logging.info(f"Threshold: {report['threshold']}")
         logging.info(f"Sampling Strategy: {report['strategy']}")
         logging.info(f"Evicted Nodes: {len(report['evicted'])}")
         logging.info(f"Malicious Nodes: {len(report['malicious'])}")
@@ -317,10 +328,12 @@ class SimulatedNode:
             # raise Exception("number of honest nodes doesn't match TN + FP")
 
         logging.info(
-            f"False Positive Rate: {len(false_positives)/(len(false_positives) + len(true_negatives))}"
+            f"False Positive Rate: {
+                len(false_positives)/(len(false_positives) + len(true_negatives))}"
         )
         logging.info(
-            f"False Negative Rate: {len(false_negatives)/(len(false_negatives) + len(true_positives))}"
+            f"False Negative Rate: {
+                len(false_negatives)/(len(false_negatives) + len(true_positives))}"
         )
 
         count = 0
@@ -329,6 +342,7 @@ class SimulatedNode:
                 if report[sample]:
                     count += 1
 
-        logging.info(f"Obtained Samples: {count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
+        logging.info(f"Obtained Samples: {
+                     count}/{DATA_COLUMN_SIDECAR_SUBNET_COUNT}")
 
         logging.info(f"total requests = {report['requests']}")
