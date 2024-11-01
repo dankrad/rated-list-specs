@@ -105,9 +105,10 @@ def sybil_poisoning_test(graph):
     for rate in np.arange(0.1, 1.0, 0.1):
         logging.info(f"\n\nSybil Attack: Rate {rate}\n")
         sybil_attack = SybilAttack(graph=graph, sybil_rate=rate)
-        sim_node.refresh_attack(sybil_attack)
+        sim_node.load_attack(sybil_attack)
         for threshold in np.arange(0.9, 0.0, -0.1):
             for strategy in ["high", "low", "random"]:
+                sim_node.refresh_scores()
                 report = sim_node.query_samples(
                     block_root, strategy, is_rated_list=True, threshold=threshold
                 )

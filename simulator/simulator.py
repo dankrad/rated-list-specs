@@ -66,16 +66,20 @@ class SimulatedNode:
 
         self.print_debug("constructed the rated list")
 
-    def refresh_attack(self, attack: AttackVec):
-        # flush scores for new attack
-        self.dht.scores = {}
-
+    def load_attack(self, attack: AttackVec):
         self.attack = attack
-        self.request_queue = queue.Queue()
 
         self.attack.setup_attack()
 
         self.print_debug("initialized the new attack vector")
+
+    def refresh_scores(self):
+        # flush scores for new attack
+        self.dht.scores = {}
+
+        self.request_queue = queue.Queue()
+
+        self.print_debug("refreshed scores")
 
     def request_sample(self, node_id: NodeId, block_root: Root, sample: SampleId):
         self.print_debug("Requesting samples from", node_id)
