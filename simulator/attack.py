@@ -135,7 +135,7 @@ class DefunctSubTreeAttack(AttackVec):
         return self.malicious_nodes
 
 
-class ConclusionAttack(AttackVec):
+class CollusionAttack(AttackVec):
     def __init__(self, graph: rx.PyGraph,sybil_rate=0.2):
         super().__init__(graph)
         self.malicious_nodes = set()
