@@ -133,3 +133,22 @@ class DefunctSubTreeAttack(AttackVec):
 
     def get_malicious_nodes(self):
         return self.malicious_nodes
+
+
+class ConclusionAttack(AttackVec):
+    def __init__(self, graph: rx.PyGraph,sybil_rate=0.2):
+        super().__init__(graph)
+        self.malicious_nodes = set()
+        self.sybil_rate = sybil_rate
+
+    def recursively_add_children(self, malicious_roots):
+        for root in malicious_roots:
+            for level1 in self.graph.neighbors(root):
+                for level2 in self.graph.neighbors(level1):
+                    self.malicious_nodes.add(level2)
+    
+    
+    def setup_attack(self):
+        random_malicious_roots = random.sample(self.graph.node_indexes(),(self.sybil_rate*self.graph.num_nodes())/(50*50)) # degree 50
+        self.recursively_add_children(random_malicious_roots)
+        self.num_attack_nodes = len(self.malicious_nodes)

@@ -179,26 +179,6 @@ def balancing_attack(graph, querying_strategy="high"):
 
     sim_node.print_report(report)
 
-
-# def graph_init():
-#     if os.path.exists("./data/random_graph.json"):
-#         logging.info("loading graph from json file")
-#         # with open(GRAPH_JSON_FILE, "r") as file:
-#             # data = json.load(file)
-#         graph = rx.from_node_link_json_file(GRAPH_JSON_FILE)
-#         print(graph.nodes())
-
-#     else:
-#         logging.info("graph not found generating graph")
-#         graph = rx.undirected_gnp_random_graph(
-#             NUM_NODES_RANDOM, DEGREE / NUM_NODES_RANDOM
-#         )
-#         json_str = rx.node_link_json(graph)
-#         with open(GRAPH_JSON_FILE, "w") as file:
-#             file.write(json_str)
-#         return graph
-
-
 def graph_init():
     if os.path.isfile(GRAPH_JSON_FILE):
         logging.info("loading graph from json file")
@@ -248,6 +228,7 @@ if __name__ == "__main__":
 
     print(filename)
 
+
     logging.basicConfig(
         filename=filename,
         filemode="w",
@@ -256,3 +237,5 @@ if __name__ == "__main__":
     )
 
     main()
+
+
